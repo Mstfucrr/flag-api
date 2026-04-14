@@ -39,10 +39,4 @@ export class CreateFlagDto {
   @ValidateNested({ each: true })
   @Type(() => RuleRowDto)
   rules!: RuleRowDto[];
-
-  @ApiPropertyOptional({ example: 'Initial create' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(2000)
-  summaryNote?: string;
 }

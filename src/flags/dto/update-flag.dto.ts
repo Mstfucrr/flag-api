@@ -36,10 +36,4 @@ export class UpdateFlagDto {
   @ValidateNested({ each: true })
   @Type(() => RuleRowDto)
   rules?: RuleRowDto[];
-
-  @ApiProperty({ example: 'What changed in this update' })
-  @IsString()
-  @MinLength(1)
-  @MaxLength(2000)
-  summaryNote!: string;
 }

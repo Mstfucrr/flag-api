@@ -4,5 +4,4 @@ export class VersionEntryModel {
   version!: number;
   snapshot!: FlagSnapshotModel;
   createdAt!: string;
-  summaryNote?: string;
 }

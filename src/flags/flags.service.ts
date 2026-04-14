@@ -57,8 +57,8 @@ export class FlagsService {
       enabled: dto.enabled,
       rules,
     });
-    const summary = (dto.summaryNote ?? '').trim() || 'create';
-    const request = this.encodeAuditRequest(null, snapshot, summary);
+    const auditSummary = 'create';
+    const request = this.encodeAuditRequest(null, snapshot);
     const aggregate: FlagAggregate = {
       projectKey,
       key,
@@ -72,11 +72,18 @@ export class FlagsService {
           version: 1,
           snapshot: this.deepCloneSnapshot(snapshot),
           createdAt: now,
-          summaryNote: dto.summaryNote,
         },
       ],
       history: [
-        this.makeLogEntry(key, 'create', 1, summary, now, principalId, request),
+        this.makeLogEntry(
+          key,
+          'create',
+          1,
+          auditSummary,
+          now,
+          principalId,
+          request,
+        ),
       ],
     };
     this.store.set(id, aggregate);
@@ -98,11 +105,35 @@ export class FlagsService {
     return this.toPublic(agg);
   }
 
+  /**
+   * Turn a flag on or off without sending description/rules/key.
+   * Reuses {@link update} (new version + audit). No-op if `enabled` already matches.
+   */
+  setEnabled(
+    projectKey: string,
+    flagKey: string,
+    enabled: boolean,
+    principalId: string,
+  ) {
+    const pk = projectKey.trim();
+    const fk = flagKey.trim();
+    const agg = this.store.get(this.rowId(pk, fk));
+    if (!agg) {
+      throw new NotFoundException(`Flag not found: ${fk}`);
+    }
+    if (agg.enabled === enabled) {
+      return this.toPublic(agg);
+    }
+    const auditSummary = enabled ? 'set enabled' : 'set disabled';
+    return this.update(pk, fk, { enabled }, principalId, auditSummary);
+  }
+
   update(
     projectKey: string,
     routeKey: string,
     dto: UpdateFlagDto,
     principalId: string,
+    auditSummary = 'update',
   ) {
     const pk = projectKey.trim();
     const rid = this.rowId(pk, routeKey);
@@ -144,19 +175,14 @@ export class FlagsService {
       version: next.currentVersion,
       snapshot: this.deepCloneSnapshot(snapshot),
       createdAt: next.updatedAt,
-      summaryNote: dto.summaryNote,
     });
-    const request = this.encodeAuditRequest(
-      oldSnapshot,
-      snapshot,
-      dto.summaryNote.trim(),
-    );
+    const request = this.encodeAuditRequest(oldSnapshot, snapshot);
     next.history.push(
       this.makeLogEntry(
         next.key,
         'update',
         next.currentVersion,
-        dto.summaryNote.trim(),
+        auditSummary,
         next.updatedAt,
         principalId,
         request,
@@ -179,7 +205,6 @@ export class FlagsService {
     return {
       version: entry.version,
       createdAt: entry.createdAt,
-      summaryNote: entry.summaryNote,
       snapshot: this.deepCloneSnapshot(entry.snapshot),
     };
   }
@@ -269,7 +294,7 @@ export class FlagsService {
     projectKey: string,
     routeKey: string,
     targetVersion: number,
-    dto: RollbackFlagDto,
+    _dto: RollbackFlagDto,
     principalId: string,
   ) {
     const pk = projectKey.trim();
@@ -308,23 +333,19 @@ export class FlagsService {
       enabled: merged.enabled,
       rules: merged.rules,
     });
+    const auditSummary = `rollback to v${targetVersion}`;
     merged.versions.push({
       version: merged.currentVersion,
       snapshot: this.deepCloneSnapshot(newSnapshot),
       createdAt: now,
-      summaryNote: `Rollback to v${targetVersion}`,
     });
-    const request = this.encodeAuditRequest(
-      beforeSnapshot,
-      newSnapshot,
-      dto.summaryNote.trim(),
-    );
+    const request = this.encodeAuditRequest(beforeSnapshot, newSnapshot);
     merged.history.push(
       this.makeLogEntry(
         merged.key,
         'rollback',
         merged.currentVersion,
-        dto.summaryNote.trim(),
+        auditSummary,
         now,
         principalId,
         request,
@@ -338,15 +359,10 @@ export class FlagsService {
   private encodeAuditRequest(
     oldData: FlagSnapshotModel | null,
     newData: FlagSnapshotModel,
-    summaryNote?: string,
   ): string {
     const o: Record<string, unknown> = { newData };
     if (oldData !== null) {
       o.oldData = oldData;
-    }
-    const note = summaryNote?.trim();
-    if (note) {
-      o.summaryNote = note;
     }
     return JSON.stringify(o);
   }
@@ -407,7 +423,6 @@ export class FlagsService {
       version: entry.version,
       flagKey: entry.flagKey,
       projectKey,
-      summaryNote: entry.summary,
     };
   }
 
@@ -462,7 +477,6 @@ export class FlagsService {
       versions: agg.versions.map((v) => ({
         version: v.version,
         createdAt: v.createdAt,
-        summaryNote: v.summaryNote,
         snapshot: this.deepCloneSnapshot(v.snapshot),
       })),
     };

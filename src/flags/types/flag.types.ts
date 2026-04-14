@@ -1,6 +1,6 @@
 export type AuditAction = 'create' | 'update' | 'rollback';
 
-export type RuleOperator = 'eq' | 'neq' | 'contains' | 'in';
+export type RuleOperator = 'eq' | 'neq' | 'contains' | 'in' | 'gt' | 'lt';
 
 export interface RuleRow {
   id: string;

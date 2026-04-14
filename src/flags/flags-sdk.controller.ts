@@ -7,6 +7,7 @@ import {
   HttpCode,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Put,
 } from '@nestjs/common';
@@ -20,6 +21,7 @@ import {
 import { CreateFlagBodyDto } from './dto/create-flag-body.dto';
 import { CreateFlagDto } from './dto/create-flag.dto';
 import { RollbackFlagDto } from './dto/rollback-flag.dto';
+import { SetFlagEnabledBodyDto } from './dto/set-flag-enabled-body.dto';
 import { UpdateFlagDto } from './dto/update-flag.dto';
 import { VendorLogsQueryDto } from './dto/vendor-logs-query.dto';
 import { FlagsService } from './flags.service';
@@ -64,7 +66,7 @@ export class FlagsSdkController {
     @Param('projectKey') projectKey: string,
     @Param('flagKey') flagKey: string,
     @Param('version', ParseIntPipe) version: number,
-    @Body() dto: RollbackFlagDto,
+    @Body() _dto: RollbackFlagDto,
     @Headers('x-principal-id') xPrincipalId?: string,
   ) {
     const principalId = xPrincipalId?.trim() || 'system';
@@ -72,7 +74,7 @@ export class FlagsSdkController {
       projectKey,
       flagKey,
       version,
-      dto,
+      _dto,
       principalId,
     );
   }
@@ -93,7 +95,6 @@ export class FlagsSdkController {
       description: body.description,
       enabled: body.enabled,
       rules: body.rules,
-      summaryNote: body.summaryNote,
     };
     return this.flagsService.create(dto, principalId);
   }
@@ -120,6 +121,31 @@ export class FlagsSdkController {
     @Param('version', ParseIntPipe) version: number,
   ) {
     return this.flagsService.getVersionSnapshot(projectKey, flagKey, version);
+  }
+
+  @Patch(':flagKey/enabled')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Set flag enabled/disabled only',
+    description:
+      'Body `{ "enabled": true|false }`. Creates a new version and audit entry. No-op (200 + current state) if already in the requested state.',
+  })
+  @ApiParam({ name: 'projectKey' })
+  @ApiParam({ name: 'flagKey' })
+  @ApiBody({ type: SetFlagEnabledBodyDto })
+  setEnabled(
+    @Param('projectKey') projectKey: string,
+    @Param('flagKey') flagKey: string,
+    @Body() body: SetFlagEnabledBodyDto,
+    @Headers('x-principal-id') xPrincipalId?: string,
+  ) {
+    const principalId = xPrincipalId?.trim() || 'system';
+    return this.flagsService.setEnabled(
+      projectKey,
+      flagKey,
+      body.enabled,
+      principalId,
+    );
   }
 
   @Put(':flagKey')

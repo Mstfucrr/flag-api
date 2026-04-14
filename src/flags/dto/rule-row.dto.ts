@@ -10,10 +10,13 @@ export class RuleRowDto {
   @IsString()
   field!: string;
 
-  @ApiProperty({ enum: ['eq', 'neq', 'contains', 'in'], example: 'eq' })
+  @ApiProperty({
+    enum: ['eq', 'neq', 'contains', 'in', 'gt', 'lt'],
+    example: 'eq',
+  })
   @IsString()
-  @IsIn(['eq', 'neq', 'contains', 'in'])
-  operator!: 'eq' | 'neq' | 'contains' | 'in';
+  @IsIn(['eq', 'neq', 'contains', 'in', 'gt', 'lt'])
+  operator!: 'eq' | 'neq' | 'contains' | 'in' | 'gt' | 'lt';
 
   @ApiProperty({
     description: 'Compared value (string, number, boolean, or JSON)',
