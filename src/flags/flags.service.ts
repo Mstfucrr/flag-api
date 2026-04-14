@@ -87,14 +87,21 @@ export class FlagsService {
       ],
     };
     this.store.set(id, aggregate);
-    return this.toPublic(aggregate);
+    return this.toAdminCurrent(aggregate);
   }
 
   findAll(projectKey: string) {
     const p = projectKey.trim();
     return [...this.store.values()]
       .filter((a) => a.projectKey === p)
-      .map((a) => this.toPublic(a));
+      .map((a) => this.toRuntime(a));
+  }
+
+  findAllAdmin(projectKey: string) {
+    const p = projectKey.trim();
+    return [...this.store.values()]
+      .filter((a) => a.projectKey === p)
+      .map((a) => this.toAdminCurrent(a));
   }
 
   findOne(projectKey: string, key: string) {
@@ -102,7 +109,15 @@ export class FlagsService {
     if (!agg) {
       throw new NotFoundException(`Flag not found: ${key}`);
     }
-    return this.toPublic(agg);
+    return this.toRuntime(agg);
+  }
+
+  findOneAdmin(projectKey: string, key: string) {
+    const agg = this.store.get(this.rowId(projectKey, key));
+    if (!agg) {
+      throw new NotFoundException(`Flag not found: ${key}`);
+    }
+    return this.toAdminCurrent(agg);
   }
 
   /**
@@ -122,7 +137,7 @@ export class FlagsService {
       throw new NotFoundException(`Flag not found: ${fk}`);
     }
     if (agg.enabled === enabled) {
-      return this.toPublic(agg);
+      return this.toAdminCurrent(agg);
     }
     const auditSummary = enabled ? 'set enabled' : 'set disabled';
     return this.update(pk, fk, { enabled }, principalId, auditSummary);
@@ -190,7 +205,7 @@ export class FlagsService {
     );
     this.store.delete(rid);
     this.store.set(this.rowId(pk, next.key), next);
-    return this.toPublic(next);
+    return this.toAdminCurrent(next);
   }
 
   getVersionSnapshot(projectKey: string, key: string, version: number) {
@@ -353,7 +368,7 @@ export class FlagsService {
     );
     this.store.delete(rid);
     this.store.set(this.rowId(pk, merged.key), merged);
-    return this.toPublic(merged);
+    return this.toAdminCurrent(merged);
   }
 
   private encodeAuditRequest(
@@ -465,7 +480,15 @@ export class FlagsService {
     return structuredClone(s);
   }
 
-  private toPublic(agg: FlagAggregate) {
+  private toRuntime(agg: FlagAggregate) {
+    return {
+      key: agg.key,
+      enabled: agg.enabled,
+      rules: structuredClone(agg.rules),
+    };
+  }
+
+  private toAdminCurrent(agg: FlagAggregate) {
     return {
       projectKey: agg.projectKey,
       key: agg.key,
@@ -474,11 +497,6 @@ export class FlagsService {
       rules: structuredClone(agg.rules),
       currentVersion: agg.currentVersion,
       updatedAt: agg.updatedAt,
-      versions: agg.versions.map((v) => ({
-        version: v.version,
-        createdAt: v.createdAt,
-        snapshot: this.deepCloneSnapshot(v.snapshot),
-      })),
     };
   }
 }

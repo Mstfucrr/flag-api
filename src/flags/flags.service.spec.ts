@@ -18,6 +18,70 @@ describe('FlagsService', () => {
     expect(service).toBeDefined();
   });
 
+  describe('visibility', () => {
+    it('runtime list exposes only evaluation-safe fields', () => {
+      service.create(
+        {
+          projectKey: 'proj-safe',
+          key: 'chat',
+          enabled: true,
+          rules: [
+            {
+              id: 'r1',
+              field: 'accountId',
+              operator: 'eq',
+              value: '123',
+              active: true,
+            },
+          ],
+        },
+        'u1',
+      );
+
+      const [row] = service.findAll('proj-safe');
+      expect(row).toEqual({
+        key: 'chat',
+        enabled: true,
+        rules: [
+          {
+            id: 'r1',
+            field: 'accountId',
+            operator: 'eq',
+            value: '123',
+            active: true,
+          },
+        ],
+      });
+      expect(row).not.toHaveProperty('versions');
+      expect(row).not.toHaveProperty('currentVersion');
+      expect(row).not.toHaveProperty('updatedAt');
+      expect(row).not.toHaveProperty('description');
+    });
+
+    it('admin list exposes current metadata but not version snapshots by default', () => {
+      service.create(
+        {
+          projectKey: 'proj-admin',
+          key: 'chat',
+          description: 'desc',
+          enabled: true,
+          rules: [],
+        },
+        'u1',
+      );
+
+      const [row] = service.findAllAdmin('proj-admin');
+      expect(row).toMatchObject({
+        projectKey: 'proj-admin',
+        key: 'chat',
+        description: 'desc',
+        enabled: true,
+        currentVersion: 1,
+      });
+      expect(row).not.toHaveProperty('versions');
+    });
+  });
+
   describe('queryVendorLogs', () => {
     it('returns vendor-shaped page for allowed resourceId', () => {
       service.create(
@@ -82,7 +146,7 @@ describe('FlagsService', () => {
         },
         'u1',
       );
-      const before = service.findOne('p', 'f2');
+      const before = service.findOneAdmin('p', 'f2');
       const after = service.setEnabled('p', 'f2', true, 'u2');
       expect(after.enabled).toBe(true);
       expect(after).toEqual(before);
