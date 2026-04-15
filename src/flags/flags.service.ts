@@ -18,6 +18,8 @@ import type { FlagSnapshotModel } from './models/flag-snapshot.model';
 import type { AuditLogEntryModel } from './models/audit-log-entry.model';
 import type { VersionEntryModel } from './models/version-entry.model';
 
+import { evaluateFlag } from '@core-sdk/feature-flags-core';
+
 interface FlagAggregate {
   /** Portal / projects API client key */
   projectKey: string;
@@ -30,6 +32,19 @@ interface FlagAggregate {
   versions: VersionEntryModel[];
   history: AuditLogEntryModel[];
 }
+
+type DeclarativeRule = {
+  id: string;
+  field: string;
+  operator: RuleRow['operator'];
+  value: unknown;
+  active: boolean;
+};
+
+type EvaluateFlagFn = (
+  definition: { enabled: boolean; rules: DeclarativeRule[] },
+  context: Record<string, unknown>,
+) => { enabled: boolean };
 
 @Injectable()
 export class FlagsService {
@@ -102,6 +117,31 @@ export class FlagsService {
     return [...this.store.values()]
       .filter((a) => a.projectKey === p)
       .map((a) => this.toAdminCurrent(a));
+  }
+
+  evaluate(
+    projectKey: string,
+    flagKeys: string[],
+    context: Record<string, unknown> = {},
+  ) {
+    const p = projectKey.trim();
+    const results: Record<string, { enabled: boolean }> = {};
+
+    for (const rawKey of flagKeys) {
+      const key = rawKey.trim();
+      if (!key) {
+        continue;
+      }
+      const agg = this.store.get(this.rowId(p, key));
+      results[key] = {
+        enabled:
+          agg !== undefined
+            ? this.evaluateRuntimeEnabled(agg.enabled, agg.rules, context)
+            : false,
+      };
+    }
+
+    return { results };
   }
 
   findOne(projectKey: string, key: string) {
@@ -498,5 +538,27 @@ export class FlagsService {
       currentVersion: agg.currentVersion,
       updatedAt: agg.updatedAt,
     };
+  }
+
+  private evaluateRuntimeEnabled(
+    masterEnabled: boolean,
+    rules: RuleRow[],
+    context: Record<string, unknown>,
+  ): boolean {
+    const evaluateFlagStrict = evaluateFlag as EvaluateFlagFn;
+    const declarativeRules: DeclarativeRule[] = rules.map((rule) => ({
+      id: rule.id,
+      field: rule.field,
+      operator: rule.operator,
+      value: rule.value,
+      active: rule.active !== false,
+    }));
+    return evaluateFlagStrict(
+      {
+        enabled: masterEnabled,
+        rules: declarativeRules,
+      },
+      context,
+    ).enabled;
   }
 }

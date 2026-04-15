@@ -1,5 +1,6 @@
-import { Controller, Get, Param } from '@nestjs/common';
-import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
+import { ApiBody, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { EvaluateFlagsBodyDto } from './dto/evaluate-flags-body.dto';
 import { FlagsService } from './flags.service';
 
 /**
@@ -9,6 +10,18 @@ import { FlagsService } from './flags.service';
 @Controller('projects/:projectKey/flags')
 export class FlagsSdkController {
   constructor(private readonly flagsService: FlagsService) {}
+
+  @Post('evaluate')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Evaluate one or more flags for a context' })
+  @ApiParam({ name: 'projectKey' })
+  @ApiBody({ type: EvaluateFlagsBodyDto })
+  evaluate(
+    @Param('projectKey') projectKey: string,
+    @Body() body: EvaluateFlagsBodyDto,
+  ) {
+    return this.flagsService.evaluate(projectKey, body.flagKeys, body.context);
+  }
 
   @Get(':flagKey')
   @ApiOperation({ summary: 'Get current runtime flag state' })

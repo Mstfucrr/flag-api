@@ -158,4 +158,39 @@ describe('FlagsService', () => {
       );
     });
   });
+
+  describe('evaluate', () => {
+    it('returns only enabled result per key', () => {
+      service.create(
+        {
+          projectKey: 'partner-frontend',
+          key: 'show_live_support_chat',
+          enabled: true,
+          rules: [
+            {
+              id: 'r1',
+              field: 'accountId',
+              operator: 'eq',
+              value: '9742948',
+              active: true,
+            },
+          ],
+        },
+        'u1',
+      );
+
+      const out = service.evaluate(
+        'partner-frontend',
+        ['show_live_support_chat', 'unknown-flag'],
+        { accountId: '9742948' },
+      );
+
+      expect(out).toEqual({
+        results: {
+          show_live_support_chat: { enabled: true },
+          'unknown-flag': { enabled: false },
+        },
+      });
+    });
+  });
 });
