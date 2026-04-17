@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { FlagEntity } from '../database/entities/flag.entity';
+import { CachedFlagsPersistence } from './cached-flags-persistence';
 import { FlagsAdminController } from './flags-admin.controller';
 import { FlagsSdkController } from './flags-sdk.controller';
 import {
@@ -14,7 +15,8 @@ import { FlagsService } from './flags.service';
   controllers: [FlagsSdkController, FlagsAdminController],
   providers: [
     FlagsPersistenceRepository,
-    { provide: FLAGS_PERSISTENCE, useExisting: FlagsPersistenceRepository },
+    CachedFlagsPersistence,
+    { provide: FLAGS_PERSISTENCE, useExisting: CachedFlagsPersistence },
     FlagsService,
   ],
 })

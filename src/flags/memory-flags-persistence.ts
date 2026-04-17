@@ -1,4 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type {
   FlagAggregate,
   IFlagsPersistence,
@@ -33,6 +37,7 @@ export class MemoryFlagsPersistence implements IFlagsPersistence {
     return Promise.resolve(
       [...this.map.values()]
         .filter((a) => a.projectKey === p)
+        .sort((a, b) => a.key.localeCompare(b.key))
         .map((a) => structuredClone(a)),
     );
   }
@@ -54,7 +59,7 @@ export class MemoryFlagsPersistence implements IFlagsPersistence {
   insert(agg: FlagAggregate): Promise<void> {
     const id = this.rowId(agg.projectKey, agg.key);
     if (this.map.has(id)) {
-      return Promise.resolve();
+      throw new ConflictException(`Flag already exists: ${agg.key}`);
     }
     this.map.set(id, structuredClone(agg));
     return Promise.resolve();
@@ -62,6 +67,11 @@ export class MemoryFlagsPersistence implements IFlagsPersistence {
 
   updateByLookup(agg: FlagAggregate, lookupFlagKey: string): Promise<void> {
     const oldId = this.rowId(agg.projectKey, lookupFlagKey);
+    if (!this.map.has(oldId)) {
+      throw new NotFoundException(
+        `Flag row missing for update: ${lookupFlagKey}`,
+      );
+    }
     const nextId = this.rowId(agg.projectKey, agg.key);
     this.map.delete(oldId);
     this.map.set(nextId, structuredClone(agg));
