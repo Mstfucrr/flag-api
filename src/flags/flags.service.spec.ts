@@ -1,6 +1,5 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { FEATURE_FLAGS_AUDIT_RESOURCE_LOGS } from './constants/audit-resource.constants';
 import { FLAGS_PERSISTENCE } from './flags-persistence.repository';
 import { FlagsService } from './flags.service';
 import { MemoryFlagsPersistence } from './memory-flags-persistence';
@@ -77,39 +76,25 @@ describe('FlagsService', () => {
     });
   });
 
-  describe('queryVendorLogs', () => {
-    it('returns vendor-shaped page for allowed resourceId', async () => {
+  describe('getHistory', () => {
+    it('returns versions with createdBy, no audit payload', async () => {
       await service.create(
         {
-          projectKey: 'proj-a',
-          key: 'a',
+          projectKey: 'p',
+          key: 'f1',
           enabled: true,
           rules: [],
         },
-        'u1',
+        'alice',
       );
-      const out = await service.queryVendorLogs({
-        resourceId: FEATURE_FLAGS_AUDIT_RESOURCE_LOGS,
-        descending: true,
-        delta: 10,
+      const h = await service.getHistory('p', 'f1');
+      expect(h.flagKey).toBe('f1');
+      expect(h).not.toHaveProperty('audit');
+      expect(h.versions).toHaveLength(1);
+      expect(h.versions[0]).toMatchObject({
+        version: 1,
+        createdBy: 'alice',
       });
-      expect(out.items.length).toBe(1);
-      expect(out.items[0]).toMatchObject({
-        code: 'ok',
-        principalId: 'u1',
-        action: 'create-flag',
-      });
-      expect(out.next).toBeNull();
-      expect(out.prev).toBeNull();
-    });
-
-    it('rejects unknown resourceId', async () => {
-      await expect(
-        service.queryVendorLogs({
-          resourceId: '/unknown-audit',
-          delta: 10,
-        }),
-      ).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -129,6 +114,8 @@ describe('FlagsService', () => {
       expect(after).toMatchObject({ key: 'f1' });
       const agg = await service.findOneAdmin('p', 'f1');
       expect(agg).toMatchObject({ enabled: true });
+      const snap = await service.getVersionSnapshot('p', 'f1', 2);
+      expect(snap.createdBy).toBe('u2');
     });
 
     it('no-op when already in requested state', async () => {

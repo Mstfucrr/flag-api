@@ -23,29 +23,12 @@ import { CreateFlagDto } from './dto/create-flag.dto';
 import { RollbackFlagDto } from './dto/rollback-flag.dto';
 import { SetFlagEnabledBodyDto } from './dto/set-flag-enabled-body.dto';
 import { UpdateFlagDto } from './dto/update-flag.dto';
-import { VendorLogsQueryDto } from './dto/vendor-logs-query.dto';
 import { FlagsService } from './flags.service';
 
 @ApiTags('flags-admin')
 @Controller('admin/projects/:projectKey/flags')
 export class FlagsAdminController {
   constructor(private readonly flagsService: FlagsService) {}
-
-  @Post('audit/query')
-  @HttpCode(200)
-  @ApiOperation({
-    summary: 'Paged audit log for admin UI',
-    description:
-      'POST body matches portal vendor-logs: resourceId, descending, delta, cursor. Response: { items, prev, next }.',
-  })
-  @ApiBody({ type: VendorLogsQueryDto })
-  queryAudit(
-    @Param('projectKey') _projectKey: string,
-    @Body() dto: VendorLogsQueryDto,
-  ) {
-    void _projectKey;
-    return this.flagsService.queryVendorLogs(dto);
-  }
 
   @Post(':flagKey/rollback/:version')
   @ApiOperation({
@@ -94,7 +77,7 @@ export class FlagsAdminController {
 
   @Get(':flagKey/history')
   @ApiOperation({
-    summary: 'Audit log and version snapshots for a flag (admin)',
+    summary: 'Version snapshots for a flag (admin)',
   })
   @ApiParam({ name: 'projectKey' })
   @ApiParam({ name: 'flagKey' })

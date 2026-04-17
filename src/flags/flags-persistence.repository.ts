@@ -2,7 +2,6 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { FlagEntity } from '../database/entities/flag.entity';
-import type { AuditLogEntryModel } from './models/audit-log-entry.model';
 import type { VersionEntryModel } from './models/version-entry.model';
 import type { RuleRow } from './types/flag.types';
 
@@ -16,7 +15,6 @@ export interface FlagAggregate {
   currentVersion: number;
   updatedAt: string;
   versions: VersionEntryModel[];
-  history: AuditLogEntryModel[];
 }
 
 export const FLAGS_PERSISTENCE = Symbol('FLAGS_PERSISTENCE');
@@ -31,7 +29,6 @@ export interface IFlagsPersistence {
     flagKey: string,
   ): Promise<boolean>;
   listByProject(projectKey: string): Promise<FlagAggregate[]>;
-  listAll(): Promise<FlagAggregate[]>;
   findManyByProjectAndKeys(
     projectKey: string,
     flagKeys: string[],
@@ -57,8 +54,7 @@ export class FlagsPersistenceRepository implements IFlagsPersistence {
       rules: structuredClone(row.rules),
       currentVersion: row.currentVersion,
       updatedAt: row.updatedAt.toISOString(),
-      versions: structuredClone(row.versions),
-      history: structuredClone(row.history),
+      versions: row.versions,
     };
   }
 
@@ -71,7 +67,6 @@ export class FlagsPersistenceRepository implements IFlagsPersistence {
     row.currentVersion = agg.currentVersion;
     row.updatedAt = new Date(agg.updatedAt);
     row.versions = structuredClone(agg.versions);
-    row.history = structuredClone(agg.history);
   }
 
   async findByLookup(
@@ -98,13 +93,6 @@ export class FlagsPersistenceRepository implements IFlagsPersistence {
     const rows = await this.repo.find({
       where: { projectKey: projectKey.trim() },
       order: { flagKey: 'ASC' },
-    });
-    return rows.map((r) => this.toAggregate(r));
-  }
-
-  async listAll(): Promise<FlagAggregate[]> {
-    const rows = await this.repo.find({
-      order: { projectKey: 'ASC', flagKey: 'ASC' },
     });
     return rows.map((r) => this.toAggregate(r));
   }

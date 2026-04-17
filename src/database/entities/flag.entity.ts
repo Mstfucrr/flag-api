@@ -1,5 +1,4 @@
 import type { RuleRow } from '../../flags/types/flag.types';
-import type { AuditLogEntryModel } from '../../flags/models/audit-log-entry.model';
 import type { VersionEntryModel } from '../../flags/models/version-entry.model';
 import { Column, Entity, PrimaryGeneratedColumn, Unique } from 'typeorm';
 
@@ -32,7 +31,4 @@ export class FlagEntity {
 
   @Column({ type: 'json', default: [] })
   versions!: VersionEntryModel[];
-
-  @Column({ type: 'json', default: [] })
-  history!: AuditLogEntryModel[];
 }

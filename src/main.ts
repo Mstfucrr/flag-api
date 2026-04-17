@@ -26,7 +26,7 @@ async function bootstrap() {
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Feature Flag API')
     .setDescription(
-      'Feature flags backed by PostgreSQL (TypeORM), linear versioning, audit history, and rollback.',
+      'Feature flags backed by PostgreSQL (TypeORM), linear versioning, and rollback.',
     )
     .setVersion('1.0')
     .build();

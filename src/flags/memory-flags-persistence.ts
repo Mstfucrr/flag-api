@@ -13,65 +13,63 @@ export class MemoryFlagsPersistence implements IFlagsPersistence {
     return `${projectKey.trim()}\x1f${flagKey.trim()}`;
   }
 
-  async findByLookup(
+  findByLookup(
     projectKey: string,
     flagKeyLookup: string,
   ): Promise<FlagAggregate | null> {
     const v = this.map.get(this.rowId(projectKey, flagKeyLookup));
-    return v ? structuredClone(v) : null;
+    return Promise.resolve(v ? structuredClone(v) : null);
   }
 
-  async existsByProjectAndFlagKey(
+  existsByProjectAndFlagKey(
     projectKey: string,
     flagKey: string,
   ): Promise<boolean> {
-    return this.map.has(this.rowId(projectKey, flagKey));
+    return Promise.resolve(this.map.has(this.rowId(projectKey, flagKey)));
   }
 
-  async listByProject(projectKey: string): Promise<FlagAggregate[]> {
+  listByProject(projectKey: string): Promise<FlagAggregate[]> {
     const p = projectKey.trim();
-    return [...this.map.values()]
-      .filter((a) => a.projectKey === p)
-      .map((a) => structuredClone(a));
+    return Promise.resolve(
+      [...this.map.values()]
+        .filter((a) => a.projectKey === p)
+        .map((a) => structuredClone(a)),
+    );
   }
 
-  async listAll(): Promise<FlagAggregate[]> {
-    return [...this.map.values()].map((a) => structuredClone(a));
-  }
-
-  async findManyByProjectAndKeys(
+  findManyByProjectAndKeys(
     projectKey: string,
     flagKeys: string[],
   ): Promise<Map<string, FlagAggregate>> {
     const out = new Map<string, FlagAggregate>();
     for (const k of flagKeys) {
-      const agg = await this.findByLookup(projectKey, k);
-      if (agg) {
-        out.set(k.trim(), agg);
+      const v = this.map.get(this.rowId(projectKey, k));
+      if (v) {
+        out.set(k.trim(), structuredClone(v));
       }
     }
-    return out;
+    return Promise.resolve(out);
   }
 
-  async insert(agg: FlagAggregate): Promise<void> {
+  insert(agg: FlagAggregate): Promise<void> {
     const id = this.rowId(agg.projectKey, agg.key);
     if (this.map.has(id)) {
-      return;
+      return Promise.resolve();
     }
     this.map.set(id, structuredClone(agg));
+    return Promise.resolve();
   }
 
-  async updateByLookup(
-    agg: FlagAggregate,
-    lookupFlagKey: string,
-  ): Promise<void> {
+  updateByLookup(agg: FlagAggregate, lookupFlagKey: string): Promise<void> {
     const oldId = this.rowId(agg.projectKey, lookupFlagKey);
     const nextId = this.rowId(agg.projectKey, agg.key);
     this.map.delete(oldId);
     this.map.set(nextId, structuredClone(agg));
+    return Promise.resolve();
   }
 
-  async delete(projectKey: string, flagKey: string): Promise<void> {
+  delete(projectKey: string, flagKey: string): Promise<void> {
     this.map.delete(this.rowId(projectKey, flagKey));
+    return Promise.resolve();
   }
 }
