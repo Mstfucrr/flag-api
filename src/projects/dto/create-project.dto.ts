@@ -21,7 +21,8 @@ export class CreateProjectDto {
 
   @ApiProperty({
     example: 'partner-mobile',
-    description: 'Unique lowercase kebab-case identifier (used by SDK / clients).',
+    description:
+      'Unique lowercase kebab-case identifier (used by SDK / clients).',
   })
   @IsString()
   @IsLowercase()

@@ -1,8 +1,4 @@
-/**
- * Domain shape for a client application (portal, partner, mobile).
- * When PostgreSQL + TypeORM are wired, replace with an `@Entity()` class
- * and keep this interface for DTO mapping if useful.
- */
+/** Domain shape for a client application (portal, partner, mobile). */
 export interface Project {
   id: string;
   name: string;

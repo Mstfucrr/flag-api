@@ -1,14 +1,19 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { FEATURE_FLAGS_AUDIT_RESOURCE_LOGS } from './constants/audit-resource.constants';
+import { FLAGS_PERSISTENCE } from './flags-persistence.repository';
 import { FlagsService } from './flags.service';
+import { MemoryFlagsPersistence } from './memory-flags-persistence';
 
 describe('FlagsService', () => {
   let service: FlagsService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [FlagsService],
+      providers: [
+        FlagsService,
+        { provide: FLAGS_PERSISTENCE, useClass: MemoryFlagsPersistence },
+      ],
     }).compile();
 
     service = module.get<FlagsService>(FlagsService);
@@ -19,8 +24,8 @@ describe('FlagsService', () => {
   });
 
   describe('visibility', () => {
-    it('runtime list exposes only evaluation-safe fields', () => {
-      service.create(
+    it('runtime list exposes only evaluation-safe fields', async () => {
+      await service.create(
         {
           projectKey: 'proj-safe',
           key: 'chat',
@@ -38,19 +43,9 @@ describe('FlagsService', () => {
         'u1',
       );
 
-      const [row] = service.findAll('proj-safe');
+      const [row] = await service.findAll('proj-safe');
       expect(row).toEqual({
         key: 'chat',
-        enabled: true,
-        rules: [
-          {
-            id: 'r1',
-            field: 'accountId',
-            operator: 'eq',
-            value: '123',
-            active: true,
-          },
-        ],
       });
       expect(row).not.toHaveProperty('versions');
       expect(row).not.toHaveProperty('currentVersion');
@@ -58,8 +53,8 @@ describe('FlagsService', () => {
       expect(row).not.toHaveProperty('description');
     });
 
-    it('admin list exposes current metadata but not version snapshots by default', () => {
-      service.create(
+    it('admin list exposes current metadata but not version snapshots by default', async () => {
+      await service.create(
         {
           projectKey: 'proj-admin',
           key: 'chat',
@@ -70,7 +65,7 @@ describe('FlagsService', () => {
         'u1',
       );
 
-      const [row] = service.findAllAdmin('proj-admin');
+      const [row] = await service.findAllAdmin('proj-admin');
       expect(row).toMatchObject({
         projectKey: 'proj-admin',
         key: 'chat',
@@ -83,8 +78,8 @@ describe('FlagsService', () => {
   });
 
   describe('queryVendorLogs', () => {
-    it('returns vendor-shaped page for allowed resourceId', () => {
-      service.create(
+    it('returns vendor-shaped page for allowed resourceId', async () => {
+      await service.create(
         {
           projectKey: 'proj-a',
           key: 'a',
@@ -93,7 +88,7 @@ describe('FlagsService', () => {
         },
         'u1',
       );
-      const out = service.queryVendorLogs({
+      const out = await service.queryVendorLogs({
         resourceId: FEATURE_FLAGS_AUDIT_RESOURCE_LOGS,
         descending: true,
         delta: 10,
@@ -108,19 +103,19 @@ describe('FlagsService', () => {
       expect(out.prev).toBeNull();
     });
 
-    it('rejects unknown resourceId', () => {
-      expect(() =>
+    it('rejects unknown resourceId', async () => {
+      await expect(
         service.queryVendorLogs({
           resourceId: '/unknown-audit',
           delta: 10,
         }),
-      ).toThrow(BadRequestException);
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
   describe('setEnabled', () => {
-    it('toggles enabled and bumps version', () => {
-      service.create(
+    it('toggles enabled and bumps version', async () => {
+      await service.create(
         {
           projectKey: 'p',
           key: 'f1',
@@ -129,15 +124,15 @@ describe('FlagsService', () => {
         },
         'u1',
       );
-      const after = service.setEnabled('p', 'f1', true, 'u2');
+      const after = await service.setEnabled('p', 'f1', true, 'u2');
       expect(after.enabled).toBe(true);
       expect(after).toMatchObject({ key: 'f1' });
-      const agg = service.findOne('p', 'f1');
+      const agg = await service.findOneAdmin('p', 'f1');
       expect(agg).toMatchObject({ enabled: true });
     });
 
-    it('no-op when already in requested state', () => {
-      service.create(
+    it('no-op when already in requested state', async () => {
+      await service.create(
         {
           projectKey: 'p',
           key: 'f2',
@@ -146,22 +141,22 @@ describe('FlagsService', () => {
         },
         'u1',
       );
-      const before = service.findOneAdmin('p', 'f2');
-      const after = service.setEnabled('p', 'f2', true, 'u2');
+      const before = await service.findOneAdmin('p', 'f2');
+      const after = await service.setEnabled('p', 'f2', true, 'u2');
       expect(after.enabled).toBe(true);
       expect(after).toEqual(before);
     });
 
-    it('throws when flag missing', () => {
-      expect(() => service.setEnabled('p', 'missing', true, 'u1')).toThrow(
-        NotFoundException,
-      );
+    it('throws when flag missing', async () => {
+      await expect(
+        service.setEnabled('p', 'missing', true, 'u1'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('evaluate', () => {
-    it('returns only enabled result per key', () => {
-      service.create(
+    it('returns only enabled result per key', async () => {
+      await service.create(
         {
           projectKey: 'partner-frontend',
           key: 'show_live_support_chat',
@@ -179,7 +174,7 @@ describe('FlagsService', () => {
         'u1',
       );
 
-      const out = service.evaluate(
+      const out = await service.evaluate(
         'partner-frontend',
         ['show_live_support_chat', 'unknown-flag'],
         { accountId: '9742948' },

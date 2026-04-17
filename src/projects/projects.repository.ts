@@ -1,45 +1,61 @@
 import { ConflictException, Injectable } from '@nestjs/common';
-import { randomUUID } from 'crypto';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { QueryFailedError } from 'typeorm';
+import { ProjectEntity } from '../database/entities/project.entity';
 import type { Project } from './models/project.model';
 
-/**
- * In-memory persistence (same process as flags store).
- * Swap implementation for TypeORM `Repository<Project>` when DB is enabled.
- */
 @Injectable()
 export class ProjectsRepository {
-  private readonly store = new Map<string, Project>();
+  constructor(
+    @InjectRepository(ProjectEntity)
+    private readonly repo: Repository<ProjectEntity>,
+  ) {}
 
-  create(data: {
+  private toModel(e: ProjectEntity): Project {
+    return {
+      id: e.id,
+      name: e.name,
+      key: e.key,
+      environments: [...e.environments],
+      createdAt: e.createdAt,
+      updatedAt: e.updatedAt,
+    };
+  }
+
+  async create(data: {
     name: string;
     key: string;
     environments: string[];
   }): Promise<Project> {
     const key = data.key.trim();
-    if (this.store.has(key)) {
-      throw new ConflictException(`Project key already exists: ${key}`);
-    }
-    const now = new Date();
-    const row: Project = {
-      id: randomUUID(),
-      name: data.name,
+    const row = this.repo.create({
+      name: data.name.trim(),
       key,
       environments: [...data.environments],
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.store.set(key, row);
-    return Promise.resolve(row);
+    });
+    try {
+      const saved = await this.repo.save(row);
+      return this.toModel(saved);
+    } catch (e) {
+      if (
+        e instanceof QueryFailedError &&
+        (e as QueryFailedError & { driverError?: { code?: string } })
+          .driverError?.code === '23505'
+      ) {
+        throw new ConflictException(`Project key already exists: ${key}`);
+      }
+      throw e;
+    }
   }
 
-  findAll(): Promise<Project[]> {
-    const rows = [...this.store.values()].sort(
-      (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
-    );
-    return Promise.resolve(rows);
+  async findAll(): Promise<Project[]> {
+    const rows = await this.repo.find({ order: { createdAt: 'ASC' } });
+    return rows.map((r) => this.toModel(r));
   }
 
-  findByKey(key: string): Promise<Project | null> {
-    return Promise.resolve(this.store.get(key) ?? null);
+  async findByKey(key: string): Promise<Project | null> {
+    const row = await this.repo.findOne({ where: { key: key.trim() } });
+    return row ? this.toModel(row) : null;
   }
 }

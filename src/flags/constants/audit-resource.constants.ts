@@ -2,9 +2,12 @@
 export const FEATURE_FLAGS_AUDIT_RESOURCE_LOGS = '/feature-flags-audit/logs';
 
 /** `/feature-flags-audit/projects/{projectKey}` — audit yanıtı yalnız bu projedeki flag kayıtlarını içerir. */
-export const FEATURE_FLAGS_AUDIT_PROJECT_PREFIX = '/feature-flags-audit/projects/';
+export const FEATURE_FLAGS_AUDIT_PROJECT_PREFIX =
+  '/feature-flags-audit/projects/';
 
-export function projectKeyFromAuditResourceId(resourceId: string): string | null {
+export function projectKeyFromAuditResourceId(
+  resourceId: string,
+): string | null {
   const t = resourceId.trim();
   if (!t.startsWith(FEATURE_FLAGS_AUDIT_PROJECT_PREFIX)) {
     return null;

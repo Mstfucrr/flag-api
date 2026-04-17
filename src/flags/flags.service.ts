@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -16,22 +17,12 @@ import { UpdateFlagDto } from './dto/update-flag.dto';
 import type { VendorLogsQueryDto } from './dto/vendor-logs-query.dto';
 import type { FlagSnapshotModel } from './models/flag-snapshot.model';
 import type { AuditLogEntryModel } from './models/audit-log-entry.model';
-import type { VersionEntryModel } from './models/version-entry.model';
-
+import {
+  FLAGS_PERSISTENCE,
+  type FlagAggregate,
+  type IFlagsPersistence,
+} from './flags-persistence.repository';
 import { evaluateFlag } from '@core-sdk/feature-flags-core';
-
-interface FlagAggregate {
-  /** Portal / projects API client key */
-  projectKey: string;
-  key: string;
-  description: string;
-  enabled: boolean;
-  rules: RuleRow[];
-  currentVersion: number;
-  updatedAt: string;
-  versions: VersionEntryModel[];
-  history: AuditLogEntryModel[];
-}
 
 type DeclarativeRule = {
   id: string;
@@ -48,18 +39,14 @@ type EvaluateFlagFn = (
 
 @Injectable()
 export class FlagsService {
-  private readonly store = new Map<string, FlagAggregate>();
+  constructor(
+    @Inject(FLAGS_PERSISTENCE) private readonly flags: IFlagsPersistence,
+  ) {}
 
-  /** Internal row id — never expose as flag key */
-  private rowId(projectKey: string, flagKey: string): string {
-    return `${projectKey.trim()}\x1f${flagKey.trim()}`;
-  }
-
-  create(dto: CreateFlagDto, principalId: string) {
+  async create(dto: CreateFlagDto, principalId: string) {
     const projectKey = dto.projectKey.trim();
     const key = dto.key.trim();
-    const id = this.rowId(projectKey, key);
-    if (this.store.has(id)) {
+    if (await this.flags.existsByProjectAndFlagKey(projectKey, key)) {
       throw new ConflictException(
         `Flag already exists in project ${projectKey}: ${key}`,
       );
@@ -101,38 +88,37 @@ export class FlagsService {
         ),
       ],
     };
-    this.store.set(id, aggregate);
+    await this.flags.insert(aggregate);
     return this.toAdminCurrent(aggregate);
   }
 
-  findAll(projectKey: string) {
+  async findAll(projectKey: string) {
     const p = projectKey.trim();
-    return [...this.store.values()]
-      .filter((a) => a.projectKey === p)
-      .map((a) => this.toRuntime(a));
+    const list = await this.flags.listByProject(p);
+    return list.map((a) => this.toRuntime(a));
   }
 
-  findAllAdmin(projectKey: string) {
+  async findAllAdmin(projectKey: string) {
     const p = projectKey.trim();
-    return [...this.store.values()]
-      .filter((a) => a.projectKey === p)
-      .map((a) => this.toAdminCurrent(a));
+    const list = await this.flags.listByProject(p);
+    return list.map((a) => this.toAdminCurrent(a));
   }
 
-  evaluate(
+  async evaluate(
     projectKey: string,
     flagKeys: string[],
     context: Record<string, unknown> = {},
   ) {
     const p = projectKey.trim();
     const results: Record<string, { enabled: boolean }> = {};
+    const loaded = await this.flags.findManyByProjectAndKeys(p, flagKeys);
 
     for (const rawKey of flagKeys) {
       const key = rawKey.trim();
       if (!key) {
         continue;
       }
-      const agg = this.store.get(this.rowId(p, key));
+      const agg = loaded.get(key);
       results[key] = {
         enabled:
           agg !== undefined
@@ -144,27 +130,23 @@ export class FlagsService {
     return { results };
   }
 
-  findOne(projectKey: string, key: string) {
-    const agg = this.store.get(this.rowId(projectKey, key));
+  async findOne(projectKey: string, key: string) {
+    const agg = await this.flags.findByLookup(projectKey, key);
     if (!agg) {
       throw new NotFoundException(`Flag not found: ${key}`);
     }
     return this.toRuntime(agg);
   }
 
-  findOneAdmin(projectKey: string, key: string) {
-    const agg = this.store.get(this.rowId(projectKey, key));
+  async findOneAdmin(projectKey: string, key: string) {
+    const agg = await this.flags.findByLookup(projectKey, key);
     if (!agg) {
       throw new NotFoundException(`Flag not found: ${key}`);
     }
     return this.toAdminCurrent(agg);
   }
 
-  /**
-   * Turn a flag on or off without sending description/rules/key.
-   * Reuses {@link update} (new version + audit). No-op if `enabled` already matches.
-   */
-  setEnabled(
+  async setEnabled(
     projectKey: string,
     flagKey: string,
     enabled: boolean,
@@ -172,7 +154,7 @@ export class FlagsService {
   ) {
     const pk = projectKey.trim();
     const fk = flagKey.trim();
-    const agg = this.store.get(this.rowId(pk, fk));
+    const agg = await this.flags.findByLookup(pk, fk);
     if (!agg) {
       throw new NotFoundException(`Flag not found: ${fk}`);
     }
@@ -180,10 +162,10 @@ export class FlagsService {
       return this.toAdminCurrent(agg);
     }
     const auditSummary = enabled ? 'set enabled' : 'set disabled';
-    return this.update(pk, fk, { enabled }, principalId, auditSummary);
+    return await this.update(pk, fk, { enabled }, principalId, auditSummary);
   }
 
-  update(
+  async update(
     projectKey: string,
     routeKey: string,
     dto: UpdateFlagDto,
@@ -191,8 +173,7 @@ export class FlagsService {
     auditSummary = 'update',
   ) {
     const pk = projectKey.trim();
-    const rid = this.rowId(pk, routeKey);
-    const agg = this.store.get(rid);
+    const agg = await this.flags.findByLookup(pk, routeKey);
     if (!agg) {
       throw new NotFoundException(`Flag not found: ${routeKey}`);
     }
@@ -203,7 +184,10 @@ export class FlagsService {
       rules: agg.rules,
     });
     const nextKey = (dto.key ?? routeKey).trim();
-    if (nextKey !== routeKey && this.store.has(this.rowId(pk, nextKey))) {
+    if (
+      nextKey !== routeKey &&
+      (await this.flags.existsByProjectAndFlagKey(pk, nextKey))
+    ) {
       throw new ConflictException(`Flag already exists: ${nextKey}`);
     }
     const rules = dto.rules !== undefined ? dto.rules : agg.rules;
@@ -243,13 +227,12 @@ export class FlagsService {
         request,
       ),
     );
-    this.store.delete(rid);
-    this.store.set(this.rowId(pk, next.key), next);
+    await this.flags.updateByLookup(next, routeKey);
     return this.toAdminCurrent(next);
   }
 
-  getVersionSnapshot(projectKey: string, key: string, version: number) {
-    const agg = this.store.get(this.rowId(projectKey, key));
+  async getVersionSnapshot(projectKey: string, key: string, version: number) {
+    const agg = await this.flags.findByLookup(projectKey, key);
     if (!agg) {
       throw new NotFoundException(`Flag not found: ${key}`);
     }
@@ -264,8 +247,8 @@ export class FlagsService {
     };
   }
 
-  getHistory(projectKey: string, key: string) {
-    const agg = this.store.get(this.rowId(projectKey, key));
+  async getHistory(projectKey: string, key: string) {
+    const agg = await this.flags.findByLookup(projectKey, key);
     if (!agg) {
       throw new NotFoundException(`Flag not found: ${key}`);
     }
@@ -290,11 +273,11 @@ export class FlagsService {
    * Vendor `POST /vendor-logs` ile aynı cevap şekli: `{ items, prev, next }`.
    * Cursor opak base64url JSON: `{ "skip": number }`.
    */
-  queryVendorLogs(dto: VendorLogsQueryDto): {
+  async queryVendorLogs(dto: VendorLogsQueryDto): Promise<{
     items: Record<string, unknown>[];
     prev: string | null;
     next: string | null;
-  } {
+  }> {
     const resourceId = dto.resourceId.trim();
     if (!isFeatureFlagsAuditResourceId(resourceId)) {
       throw new BadRequestException(
@@ -308,7 +291,8 @@ export class FlagsService {
     const auditProjectKey = projectKeyFromAuditResourceId(resourceId);
 
     const merged: Record<string, unknown>[] = [];
-    for (const agg of this.store.values()) {
+    const all = await this.flags.listAll();
+    for (const agg of all) {
       if (auditProjectKey !== null && agg.projectKey !== auditProjectKey) {
         continue;
       }
@@ -337,15 +321,16 @@ export class FlagsService {
     return { items: slice, prev, next };
   }
 
-  remove(projectKey: string, key: string) {
-    const id = this.rowId(projectKey, key);
-    if (!this.store.has(id)) {
+  async remove(projectKey: string, key: string) {
+    const pk = projectKey.trim();
+    const fk = key.trim();
+    if (!(await this.flags.existsByProjectAndFlagKey(pk, fk))) {
       throw new NotFoundException(`Flag not found: ${key}`);
     }
-    this.store.delete(id);
+    await this.flags.delete(pk, fk);
   }
 
-  rollback(
+  async rollback(
     projectKey: string,
     routeKey: string,
     targetVersion: number,
@@ -353,8 +338,7 @@ export class FlagsService {
     principalId: string,
   ) {
     const pk = projectKey.trim();
-    const rid = this.rowId(pk, routeKey);
-    const agg = this.store.get(rid);
+    const agg = await this.flags.findByLookup(pk, routeKey);
     if (!agg) {
       throw new NotFoundException(`Flag not found: ${routeKey}`);
     }
@@ -406,8 +390,7 @@ export class FlagsService {
         request,
       ),
     );
-    this.store.delete(rid);
-    this.store.set(this.rowId(pk, merged.key), merged);
+    await this.flags.updateByLookup(merged, routeKey);
     return this.toAdminCurrent(merged);
   }
 
@@ -520,11 +503,10 @@ export class FlagsService {
     return structuredClone(s);
   }
 
+  /** SDK/public GET: key only — evaluation is via POST …/flags/evaluate with context. */
   private toRuntime(agg: FlagAggregate) {
     return {
       key: agg.key,
-      enabled: agg.enabled,
-      rules: structuredClone(agg.rules),
     };
   }
 

@@ -162,11 +162,11 @@ export class FlagsAdminController {
   @ApiParam({ name: 'projectKey' })
   @ApiParam({ name: 'flagKey' })
   @ApiResponse({ status: 204, description: 'Flag deleted' })
-  remove(
+  async remove(
     @Param('projectKey') projectKey: string,
     @Param('flagKey') flagKey: string,
   ) {
-    this.flagsService.remove(projectKey, flagKey);
+    await this.flagsService.remove(projectKey, flagKey);
   }
 
   @Get(':flagKey')

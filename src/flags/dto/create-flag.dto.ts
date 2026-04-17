@@ -12,7 +12,10 @@ import {
 import { RuleRowDto } from './rule-row.dto';
 
 export class CreateFlagDto {
-  @ApiProperty({ example: 'portal-client-a', description: 'Portal project key — flags are isolated per project' })
+  @ApiProperty({
+    example: 'portal-client-a',
+    description: 'Portal project key — flags are isolated per project',
+  })
   @IsString()
   @MinLength(1)
   @MaxLength(128)

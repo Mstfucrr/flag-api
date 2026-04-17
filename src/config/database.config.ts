@@ -1,14 +1,18 @@
 import { registerAs } from '@nestjs/config';
 
 /**
- * PostgreSQL settings reserved for a future persistence layer (TypeORM / Prisma).
- * Projects and flags currently use in-memory stores; no DB connection is opened.
+ * PostgreSQL connection. Prefer `DATABASE_URL`; otherwise `DB_*` (or legacy `DATABASE_*`).
+ * Set `DB_SYNC=true` locally so TypeORM can create/update tables (turn off in production).
  */
 export default registerAs('database', () => ({
-  url: process.env.DATABASE_URL ?? '',
-  host: process.env.DATABASE_HOST ?? 'localhost',
-  port: parseInt(process.env.DATABASE_PORT ?? '5432', 10),
-  user: process.env.DATABASE_USER ?? '',
-  password: process.env.DATABASE_PASSWORD ?? '',
-  name: process.env.DATABASE_NAME ?? 'feature_flags',
+  url: (process.env.DATABASE_URL ?? '').trim(),
+  host: process.env.DB_HOST ?? process.env.DATABASE_HOST ?? 'localhost',
+  port: parseInt(
+    process.env.DB_PORT ?? process.env.DATABASE_PORT ?? '5432',
+    10,
+  ),
+  user: process.env.DB_USER ?? process.env.DATABASE_USER ?? '',
+  password: process.env.DB_PASSWORD ?? process.env.DATABASE_PASSWORD ?? '',
+  name: process.env.DB_NAME ?? process.env.DATABASE_NAME ?? 'myapp',
+  sync: process.env.DB_SYNC === 'true' || true,
 }));

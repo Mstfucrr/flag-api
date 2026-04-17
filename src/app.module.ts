@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import databaseConfig from './config/database.config';
 import { CommonModule } from './common/common.module';
+import { DatabaseModule } from './database/database.module';
 import { FlagsModule } from './flags/flags.module';
 import { HealthModule } from './health/health.module';
 import { ProjectsModule } from './projects/projects.module';
@@ -13,6 +14,7 @@ import { ProjectsModule } from './projects/projects.module';
       envFilePath: ['.env', '.env.local'],
       load: [databaseConfig],
     }),
+    DatabaseModule,
     CommonModule,
     FlagsModule,
     HealthModule,
