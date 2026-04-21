@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { FlagEntity } from './entities/flag.entity';
 import { ProjectEntity } from './entities/project.entity';
+import { FlagVersionEntity } from './entities/flag-version.entity';
 
 @Module({
   imports: [
@@ -20,7 +21,7 @@ import { ProjectEntity } from './entities/project.entity';
 
         const base = {
           type: 'postgres' as const,
-          entities: [ProjectEntity, FlagEntity],
+          entities: [ProjectEntity, FlagEntity, FlagVersionEntity],
           synchronize,
           autoLoadEntities: false,
         };

@@ -1,6 +1,12 @@
 import type { RuleRow } from '../../flags/types/flag.types';
-import type { VersionEntryModel } from '../../flags/models/version-entry.model';
-import { Column, Entity, PrimaryGeneratedColumn, Unique } from 'typeorm';
+import {
+  Column,
+  Entity,
+  OneToMany,
+  PrimaryGeneratedColumn,
+  Unique,
+} from 'typeorm';
+import { FlagVersionEntity } from './flag-version.entity';
 
 @Entity('flags')
 @Unique(['projectKey', 'flagKey'])
@@ -29,6 +35,6 @@ export class FlagEntity {
   @Column({ name: 'updated_at', type: 'timestamptz' })
   updatedAt!: Date;
 
-  @Column({ type: 'json', default: [] })
-  versions!: VersionEntryModel[];
+  @OneToMany(() => FlagVersionEntity, (version) => version.flag)
+  versions!: FlagVersionEntity[];
 }

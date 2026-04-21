@@ -80,9 +80,7 @@ export class CachedFlagsPersistence implements IFlagsPersistence {
 
     const rows = await this.inner.listByProject(projectKey);
     await this.cacheSet(listKey, rows);
-    for (const row of rows) {
-      await this.cacheSet(this.rowId(projectKey, row.key), row);
-    }
+    // Do not cache per-flag keys here: list rows omit version history (lean aggregates).
     return rows.map((row) => structuredClone(row));
   }
 
@@ -113,7 +111,7 @@ export class CachedFlagsPersistence implements IFlagsPersistence {
         ...misses,
       ]);
       for (const [k, v] of loaded) {
-        await this.cacheSet(this.rowId(projectKey, k), v);
+        // Lean aggregates (no version history); do not overwrite full row cache.
         out.set(k, structuredClone(v));
       }
     }

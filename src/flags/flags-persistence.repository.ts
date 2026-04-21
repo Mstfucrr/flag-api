@@ -4,6 +4,22 @@ import { In, Repository } from 'typeorm';
 import { FlagEntity } from '../database/entities/flag.entity';
 import type { VersionEntryModel } from './models/version-entry.model';
 import type { RuleRow } from './types/flag.types';
+import { FlagVersionEntity } from '../database/entities/flag-version.entity';
+
+/** Matches admin controller default when `x-principal-id` is missing; also backfills legacy rows. */
+function normalizeCreatedBy(createdBy: string | null | undefined): string {
+  const t = createdBy?.trim();
+  return t ? t : 'system';
+}
+
+function versionRowToModel(v: FlagVersionEntity): VersionEntryModel {
+  return {
+    version: v.version,
+    snapshot: structuredClone(v.snapshot),
+    createdAt: v.createdAt.toISOString(),
+    createdBy: normalizeCreatedBy(v.createdBy),
+  };
+}
 
 /** Full flag row used by {@link FlagsService} (matches former in-memory aggregate). */
 export interface FlagAggregate {
@@ -43,9 +59,15 @@ export class FlagsPersistenceRepository implements IFlagsPersistence {
   constructor(
     @InjectRepository(FlagEntity)
     private readonly repo: Repository<FlagEntity>,
+    @InjectRepository(FlagVersionEntity)
+    private readonly versionRepo: Repository<FlagVersionEntity>,
   ) {}
 
-  private toAggregate(row: FlagEntity): FlagAggregate {
+  private toAggregate(
+    row: FlagEntity,
+    versionRows: FlagVersionEntity[],
+  ): FlagAggregate {
+    const sorted = [...versionRows].sort((a, b) => a.version - b.version);
     return {
       projectKey: row.projectKey,
       key: row.flagKey,
@@ -54,8 +76,23 @@ export class FlagsPersistenceRepository implements IFlagsPersistence {
       rules: structuredClone(row.rules),
       currentVersion: row.currentVersion,
       updatedAt: row.updatedAt.toISOString(),
-      versions: row.versions,
+      versions: sorted.map(versionRowToModel),
     };
+  }
+
+  private versionEntitiesFromAggregate(
+    flagId: string,
+    agg: FlagAggregate,
+  ): FlagVersionEntity[] {
+    return agg.versions.map((v) => {
+      const e = new FlagVersionEntity();
+      e.flagId = flagId;
+      e.version = v.version;
+      e.snapshot = structuredClone(v.snapshot);
+      e.createdAt = new Date(v.createdAt);
+      e.createdBy = normalizeCreatedBy(v.createdBy);
+      return e;
+    });
   }
 
   private applyAggregate(row: FlagEntity, agg: FlagAggregate): void {
@@ -66,7 +103,6 @@ export class FlagsPersistenceRepository implements IFlagsPersistence {
     row.rules = structuredClone(agg.rules);
     row.currentVersion = agg.currentVersion;
     row.updatedAt = new Date(agg.updatedAt);
-    row.versions = structuredClone(agg.versions);
   }
 
   async findByLookup(
@@ -75,8 +111,9 @@ export class FlagsPersistenceRepository implements IFlagsPersistence {
   ): Promise<FlagAggregate | null> {
     const row = await this.repo.findOne({
       where: { projectKey: projectKey.trim(), flagKey: flagKeyLookup.trim() },
+      relations: { versions: true },
     });
-    return row ? this.toAggregate(row) : null;
+    return row ? this.toAggregate(row, row.versions ?? []) : null;
   }
 
   async existsByProjectAndFlagKey(
@@ -94,7 +131,7 @@ export class FlagsPersistenceRepository implements IFlagsPersistence {
       where: { projectKey: projectKey.trim() },
       order: { flagKey: 'ASC' },
     });
-    return rows.map((r) => this.toAggregate(r));
+    return rows.map((r) => this.toAggregate(r, []));
   }
 
   async findManyByProjectAndKeys(
@@ -111,7 +148,7 @@ export class FlagsPersistenceRepository implements IFlagsPersistence {
       where: { projectKey: pk, flagKey: In(keys) },
     });
     for (const row of rows) {
-      out.set(row.flagKey, this.toAggregate(row));
+      out.set(row.flagKey, this.toAggregate(row, []));
     }
     return out;
   }
@@ -120,6 +157,7 @@ export class FlagsPersistenceRepository implements IFlagsPersistence {
     const row = new FlagEntity();
     this.applyAggregate(row, agg);
     await this.repo.save(row);
+    await this.versionRepo.save(this.versionEntitiesFromAggregate(row.id, agg));
   }
 
   async updateByLookup(
@@ -137,8 +175,10 @@ export class FlagsPersistenceRepository implements IFlagsPersistence {
         `Flag row missing for update: ${lookupFlagKey}`,
       );
     }
+    await this.versionRepo.delete({ flagId: row.id });
     this.applyAggregate(row, agg);
     await this.repo.save(row);
+    await this.versionRepo.save(this.versionEntitiesFromAggregate(row.id, agg));
   }
 
   async delete(projectKey: string, flagKey: string): Promise<void> {

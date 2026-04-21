@@ -9,9 +9,10 @@ import {
   FlagsPersistenceRepository,
 } from './flags-persistence.repository';
 import { FlagsService } from './flags.service';
+import { FlagVersionEntity } from '../database/entities/flag-version.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([FlagEntity])],
+  imports: [TypeOrmModule.forFeature([FlagEntity, FlagVersionEntity])],
   controllers: [FlagsSdkController, FlagsAdminController],
   providers: [
     FlagsPersistenceRepository,
