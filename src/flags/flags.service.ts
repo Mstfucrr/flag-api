@@ -7,7 +7,6 @@ import {
 } from '@nestjs/common';
 import type { RuleRow } from './types/flag.types';
 import { CreateFlagDto } from './dto/create-flag.dto';
-import { RollbackFlagDto } from './dto/rollback-flag.dto';
 import { UpdateFlagDto } from './dto/update-flag.dto';
 import type { FlagSnapshotModel } from './models/flag-snapshot.model';
 import {
@@ -156,18 +155,11 @@ export class FlagsService {
     if (!agg) {
       throw new NotFoundException(`Flag not found: ${routeKey}`);
     }
-    const nextKey = (dto.key ?? routeKey).trim();
-    if (
-      nextKey !== routeKey &&
-      (await this.flags.existsByProjectAndFlagKey(pk, nextKey))
-    ) {
-      throw new ConflictException(`Flag already exists: ${nextKey}`);
-    }
     const rules = dto.rules !== undefined ? dto.rules : agg.rules;
     const next: FlagAggregate = {
       ...agg,
       projectKey: pk,
-      key: nextKey,
+      key: agg.key,
       description:
         dto.description !== undefined ? dto.description : agg.description,
       enabled: dto.enabled !== undefined ? dto.enabled : agg.enabled,
@@ -234,7 +226,6 @@ export class FlagsService {
     projectKey: string,
     routeKey: string,
     targetVersion: number,
-    _dto: RollbackFlagDto,
     principalId: string,
   ) {
     const pk = projectKey.trim();
@@ -251,7 +242,7 @@ export class FlagsService {
     const merged: FlagAggregate = {
       ...agg,
       projectKey: pk,
-      key: snap.key,
+      key: agg.key,
       description: snap.description,
       enabled: snap.enabled,
       rules: snap.rules,

@@ -98,6 +98,64 @@ describe('FlagsService', () => {
     });
   });
 
+  describe('update', () => {
+    it('bumps version and keeps flag key immutable', async () => {
+      await service.create(
+        {
+          projectKey: 'p',
+          key: 'immutable-key',
+          description: 'v1',
+          enabled: true,
+          rules: [],
+        },
+        'u1',
+      );
+      const after = await service.update(
+        'p',
+        'immutable-key',
+        { description: 'v2' },
+        'u2',
+      );
+      expect(after.key).toBe('immutable-key');
+      expect(after.description).toBe('v2');
+      expect(after.currentVersion).toBe(2);
+    });
+  });
+
+  describe('rollback', () => {
+    it('restores snapshot fields but keeps aggregate key', async () => {
+      await service.create(
+        {
+          projectKey: 'p',
+          key: 'roll-key',
+          description: 'a',
+          enabled: true,
+          rules: [
+            {
+              id: 'r1',
+              field: 'x',
+              operator: 'eq',
+              value: 1,
+              active: true,
+            },
+          ],
+        },
+        'u1',
+      );
+      await service.update(
+        'p',
+        'roll-key',
+        { description: 'b', rules: [] },
+        'u2',
+      );
+      const rolled = await service.rollback('p', 'roll-key', 1, 'u3');
+      expect(rolled.key).toBe('roll-key');
+      expect(rolled.description).toBe('a');
+      expect(rolled.rules).toHaveLength(1);
+      expect(rolled.currentVersion).toBe(3);
+    });
+  });
+
   describe('setEnabled', () => {
     it('toggles enabled and bumps version', async () => {
       await service.create(

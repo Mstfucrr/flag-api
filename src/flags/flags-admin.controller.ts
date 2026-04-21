@@ -20,7 +20,6 @@ import {
 } from '@nestjs/swagger';
 import { CreateFlagBodyDto } from './dto/create-flag-body.dto';
 import { CreateFlagDto } from './dto/create-flag.dto';
-import { RollbackFlagDto } from './dto/rollback-flag.dto';
 import { SetFlagEnabledBodyDto } from './dto/set-flag-enabled-body.dto';
 import { UpdateFlagDto } from './dto/update-flag.dto';
 import { FlagsService } from './flags.service';
@@ -37,12 +36,10 @@ export class FlagsAdminController {
   @ApiParam({ name: 'projectKey' })
   @ApiParam({ name: 'flagKey' })
   @ApiParam({ name: 'version', type: Number })
-  @ApiBody({ type: RollbackFlagDto })
   rollback(
     @Param('projectKey') projectKey: string,
     @Param('flagKey') flagKey: string,
     @Param('version', ParseIntPipe) version: number,
-    @Body() dto: RollbackFlagDto,
     @Headers('x-principal-id') xPrincipalId?: string,
   ) {
     const principalId = xPrincipalId?.trim() || 'system';
@@ -50,7 +47,6 @@ export class FlagsAdminController {
       projectKey,
       flagKey,
       version,
-      dto,
       principalId,
     );
   }
