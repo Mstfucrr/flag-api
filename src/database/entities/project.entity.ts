@@ -17,9 +17,6 @@ export class ProjectEntity {
   @Column({ type: 'varchar', length: 256, unique: true })
   key!: string;
 
-  @Column({ type: 'json', default: [] })
-  environments!: string[];
-
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 

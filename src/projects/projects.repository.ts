@@ -17,22 +17,16 @@ export class ProjectsRepository {
       id: e.id,
       name: e.name,
       key: e.key,
-      environments: [...e.environments],
       createdAt: e.createdAt,
       updatedAt: e.updatedAt,
     };
   }
 
-  async create(data: {
-    name: string;
-    key: string;
-    environments: string[];
-  }): Promise<Project> {
+  async create(data: { name: string; key: string }): Promise<Project> {
     const key = data.key.trim();
     const row = this.repo.create({
       name: data.name.trim(),
       key,
-      environments: [...data.environments],
     });
     try {
       const saved = await this.repo.save(row);

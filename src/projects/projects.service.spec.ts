@@ -27,12 +27,11 @@ describe('ProjectsService', () => {
     expect(service).toBeDefined();
   });
 
-  it('createProject uses default environments when omitted', async () => {
+  it('createProject trims name and key', async () => {
     const saved = {
       id: 'uuid-1',
       name: 'Acme',
       key: 'acme',
-      environments: ['dev', 'stage', 'prod'],
       createdAt: new Date('2020-01-01T00:00:00.000Z'),
       updatedAt: new Date('2020-01-01T00:00:00.000Z'),
     };
@@ -46,10 +45,8 @@ describe('ProjectsService', () => {
     expect(mockRepo.create).toHaveBeenCalledWith({
       name: 'Acme',
       key: 'acme',
-      environments: ['dev', 'stage', 'prod'],
     });
     expect(out.key).toBe('acme');
-    expect(out.environments).toEqual(['dev', 'stage', 'prod']);
   });
 
   it('createProject propagates ConflictException from repository', async () => {
@@ -68,7 +65,6 @@ describe('ProjectsService', () => {
         id: '1',
         name: 'A',
         key: 'a',
-        environments: ['dev'],
         createdAt: new Date('2020-01-01T00:00:00.000Z'),
         updatedAt: new Date('2020-01-01T00:00:00.000Z'),
       },

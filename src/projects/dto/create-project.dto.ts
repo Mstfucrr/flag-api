@@ -1,16 +1,11 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 import {
-  IsArray,
-  IsIn,
   IsLowercase,
-  IsOptional,
   IsString,
   Matches,
   MaxLength,
   MinLength,
 } from 'class-validator';
-
-const ENVIRONMENTS = ['dev', 'stage', 'prod'] as const;
 
 export class CreateProjectDto {
   @ApiProperty({ example: 'Partner mobile app' })
@@ -33,14 +28,4 @@ export class CreateProjectDto {
       'key must be lowercase kebab-case (letters/digits, single hyphens between segments)',
   })
   key!: string;
-
-  @ApiPropertyOptional({
-    enum: ENVIRONMENTS,
-    isArray: true,
-    description: 'Defaults to dev, stage, prod when omitted.',
-  })
-  @IsOptional()
-  @IsArray()
-  @IsIn([...ENVIRONMENTS], { each: true })
-  environments?: (typeof ENVIRONMENTS)[number][];
 }

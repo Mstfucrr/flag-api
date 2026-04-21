@@ -11,9 +11,6 @@ export class ProjectResponseDto {
   @ApiProperty()
   key!: string;
 
-  @ApiProperty({ type: [String], example: ['dev', 'stage', 'prod'] })
-  environments!: string[];
-
   @ApiProperty()
   createdAt!: string;
 
@@ -26,7 +23,6 @@ export function mapProjectToResponse(entity: Project): ProjectResponseDto {
     id: entity.id,
     name: entity.name,
     key: entity.key,
-    environments: [...(entity.environments ?? [])],
     createdAt: entity.createdAt.toISOString(),
     updatedAt: entity.updatedAt.toISOString(),
   };

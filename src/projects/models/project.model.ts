@@ -3,7 +3,6 @@ export interface Project {
   id: string;
   name: string;
   key: string;
-  environments: string[];
   createdAt: Date;
   updatedAt: Date;
 }

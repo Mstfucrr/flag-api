@@ -26,7 +26,6 @@ export class ProjectSeedService implements OnModuleInit {
       await this.projectsService.createProject({
         name: 'Portal',
         key: 'portal',
-        environments: ['dev', 'stage', 'prod'],
       });
       this.logger.log('Seeded default project: portal');
     } catch (e) {

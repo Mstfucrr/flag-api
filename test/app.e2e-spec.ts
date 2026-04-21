@@ -50,11 +50,11 @@ describe('feature-flag-api (e2e)', () => {
     const key = `dup-${Date.now()}`;
     await request(app.getHttpServer())
       .post('/projects')
-      .send({ name: 'First', key, environments: ['dev'] })
+      .send({ name: 'First', key })
       .expect(201);
     await request(app.getHttpServer())
       .post('/projects')
-      .send({ name: 'Second', key, environments: ['dev'] })
+      .send({ name: 'Second', key })
       .expect(409);
   });
 
@@ -65,7 +65,6 @@ describe('feature-flag-api (e2e)', () => {
       .send({
         name: 'E2E project',
         key,
-        environments: ['dev', 'prod'],
       })
       .expect(201);
     const createdBody = created.body as { key: string };
