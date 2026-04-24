@@ -1,5 +1,7 @@
 import { ConflictException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { FlagsService } from '../flags/flags.service';
+import { RequestLogService } from '../request-log/request-log.service';
 import { ProjectsService } from './projects.service';
 import { ProjectsRepository } from './projects.repository';
 
@@ -9,6 +11,11 @@ describe('ProjectsService', () => {
     create: jest.fn(),
     findAll: jest.fn(),
     findByKey: jest.fn(),
+    deleteByKey: jest.fn(),
+  };
+  const mockRequestLog = { append: jest.fn().mockResolvedValue(undefined) };
+  const mockFlagsService = {
+    purgeProjectFlags: jest.fn().mockResolvedValue([]),
   };
 
   beforeEach(async () => {
@@ -17,6 +24,8 @@ describe('ProjectsService', () => {
       providers: [
         ProjectsService,
         { provide: ProjectsRepository, useValue: mockRepo },
+        { provide: RequestLogService, useValue: mockRequestLog },
+        { provide: FlagsService, useValue: mockFlagsService },
       ],
     }).compile();
 
@@ -37,10 +46,13 @@ describe('ProjectsService', () => {
     };
     mockRepo.create.mockResolvedValue(saved);
 
-    const out = await service.createProject({
-      name: '  Acme  ',
-      key: 'acme',
-    });
+    const out = await service.createProject(
+      {
+        name: '  Acme  ',
+        key: 'acme',
+      },
+      'u1',
+    );
 
     expect(mockRepo.create).toHaveBeenCalledWith({
       name: 'Acme',
@@ -55,8 +67,31 @@ describe('ProjectsService', () => {
     );
 
     await expect(
-      service.createProject({ name: 'X', key: 'dup-key' }),
+      service.createProject({ name: 'X', key: 'dup-key' }, 'u1'),
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('removeProject purges flags then deletes row', async () => {
+    mockRepo.findByKey.mockResolvedValue({
+      id: '1',
+      name: 'X',
+      key: 'proj-x',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    mockFlagsService.purgeProjectFlags.mockResolvedValue(['f1']);
+    mockRepo.deleteByKey.mockResolvedValue(undefined);
+
+    await service.removeProject('proj-x', 'alice');
+
+    expect(mockFlagsService.purgeProjectFlags).toHaveBeenCalledWith('proj-x');
+    expect(mockRepo.deleteByKey).toHaveBeenCalledWith('proj-x');
+    expect(mockRequestLog.append).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'delete-project',
+        principalId: 'alice',
+      }),
+    );
   });
 
   it('findAll returns mapped DTOs', async () => {

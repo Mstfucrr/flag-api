@@ -144,8 +144,10 @@ export class FlagsAdminController {
   async remove(
     @Param('projectKey') projectKey: string,
     @Param('flagKey') flagKey: string,
+    @Headers('x-principal-id') xPrincipalId?: string,
   ) {
-    await this.flagsService.remove(projectKey, flagKey);
+    const principalId = xPrincipalId?.trim() || 'system';
+    await this.flagsService.remove(projectKey, flagKey, principalId);
   }
 
   @Get(':flagKey')

@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { RequestLogService } from '../request-log/request-log.service';
 import { FLAGS_PERSISTENCE } from './flags-persistence.repository';
 import { FlagsSdkController } from './flags-sdk.controller';
 import { FlagsService } from './flags.service';
@@ -13,6 +14,7 @@ describe('FlagsSdkController', () => {
       providers: [
         FlagsService,
         { provide: FLAGS_PERSISTENCE, useClass: MemoryFlagsPersistence },
+        { provide: RequestLogService, useValue: { append: jest.fn() } },
       ],
     }).compile();
 

@@ -1,17 +1,20 @@
 import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { RequestLogService } from '../request-log/request-log.service';
 import { FLAGS_PERSISTENCE } from './flags-persistence.repository';
 import { FlagsService } from './flags.service';
 import { MemoryFlagsPersistence } from './memory-flags-persistence';
 
 describe('FlagsService', () => {
   let service: FlagsService;
+  const mockRequestLog = { append: jest.fn().mockResolvedValue(undefined) };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         FlagsService,
         { provide: FLAGS_PERSISTENCE, useClass: MemoryFlagsPersistence },
+        { provide: RequestLogService, useValue: mockRequestLog },
       ],
     }).compile();
 
@@ -99,7 +102,7 @@ describe('FlagsService', () => {
   });
 
   describe('update', () => {
-    it('bumps version and keeps flag key immutable', async () => {
+    it('description-only update does not bump version', async () => {
       await service.create(
         {
           projectKey: 'p',
@@ -118,6 +121,46 @@ describe('FlagsService', () => {
       );
       expect(after.key).toBe('immutable-key');
       expect(after.description).toBe('v2');
+      expect(after.currentVersion).toBe(1);
+      const h = await service.getHistory('p', 'immutable-key');
+      expect(h.versions).toHaveLength(1);
+    });
+
+    it('rule change bumps version', async () => {
+      await service.create(
+        {
+          projectKey: 'p',
+          key: 'rule-bump',
+          description: 'd',
+          enabled: true,
+          rules: [
+            {
+              id: 'r1',
+              field: 'x',
+              operator: 'eq',
+              value: 1,
+              active: true,
+            },
+          ],
+        },
+        'u1',
+      );
+      const after = await service.update(
+        'p',
+        'rule-bump',
+        {
+          rules: [
+            {
+              id: 'r1',
+              field: 'x',
+              operator: 'eq',
+              value: 2,
+              active: true,
+            },
+          ],
+        },
+        'u2',
+      );
       expect(after.currentVersion).toBe(2);
     });
   });
@@ -157,7 +200,7 @@ describe('FlagsService', () => {
   });
 
   describe('setEnabled', () => {
-    it('toggles enabled and bumps version', async () => {
+    it('toggles enabled without new flag version', async () => {
       await service.create(
         {
           projectKey: 'p',
@@ -169,11 +212,11 @@ describe('FlagsService', () => {
       );
       const after = await service.setEnabled('p', 'f1', true, 'u2');
       expect(after.enabled).toBe(true);
-      expect(after).toMatchObject({ key: 'f1' });
+      expect(after).toMatchObject({ key: 'f1', currentVersion: 1 });
       const agg = await service.findOneAdmin('p', 'f1');
-      expect(agg).toMatchObject({ enabled: true });
-      const snap = await service.getVersionSnapshot('p', 'f1', 2);
-      expect(snap.createdBy).toBe('u2');
+      expect(agg).toMatchObject({ enabled: true, currentVersion: 1 });
+      const h = await service.getHistory('p', 'f1');
+      expect(h.versions).toHaveLength(1);
     });
 
     it('no-op when already in requested state', async () => {

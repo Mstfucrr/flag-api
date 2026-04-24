@@ -132,6 +132,15 @@ export class CachedFlagsPersistence implements IFlagsPersistence {
     await this.cacheSet(this.rowId(agg.projectKey, agg.key), agg);
   }
 
+  async patchMetadata(
+    projectKey: string,
+    flagKey: string,
+    fields: { description?: string; enabled?: boolean },
+  ): Promise<void> {
+    await this.inner.patchMetadata(projectKey, flagKey, fields);
+    await this.evict(projectKey.trim(), flagKey.trim());
+  }
+
   async delete(projectKey: string, flagKey: string) {
     await this.inner.delete(projectKey, flagKey);
     await this.evict(projectKey, flagKey);

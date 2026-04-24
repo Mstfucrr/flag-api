@@ -1,4 +1,8 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { QueryFailedError } from 'typeorm';
@@ -51,5 +55,13 @@ export class ProjectsRepository {
   async findByKey(key: string): Promise<Project | null> {
     const row = await this.repo.findOne({ where: { key: key.trim() } });
     return row ? this.toModel(row) : null;
+  }
+
+  async deleteByKey(key: string): Promise<void> {
+    const k = key.trim();
+    const res = await this.repo.delete({ key: k });
+    if (!res.affected) {
+      throw new NotFoundException(`Project not found: ${k}`);
+    }
   }
 }

@@ -51,6 +51,11 @@ export interface IFlagsPersistence {
   ): Promise<Map<string, FlagAggregate>>;
   insert(agg: FlagAggregate): Promise<void>;
   updateByLookup(agg: FlagAggregate, lookupFlagKey: string): Promise<void>;
+  patchMetadata(
+    projectKey: string,
+    flagKey: string,
+    fields: { description?: string; enabled?: boolean },
+  ): Promise<void>;
   delete(projectKey: string, flagKey: string): Promise<void>;
 }
 
@@ -158,6 +163,29 @@ export class FlagsPersistenceRepository implements IFlagsPersistence {
     this.applyAggregate(row, agg);
     await this.repo.save(row);
     await this.versionRepo.save(this.versionEntitiesFromAggregate(row.id, agg));
+  }
+
+  async patchMetadata(
+    projectKey: string,
+    flagKey: string,
+    fields: { description?: string; enabled?: boolean },
+  ): Promise<void> {
+    const row = await this.repo.findOne({
+      where: { projectKey: projectKey.trim(), flagKey: flagKey.trim() },
+    });
+    if (!row) {
+      throw new NotFoundException(
+        `Flag row missing for metadata patch: ${flagKey}`,
+      );
+    }
+    if (fields.description !== undefined) {
+      row.description = fields.description;
+    }
+    if (fields.enabled !== undefined) {
+      row.enabled = fields.enabled;
+    }
+    row.updatedAt = new Date();
+    await this.repo.save(row);
   }
 
   async updateByLookup(

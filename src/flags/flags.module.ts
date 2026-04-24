@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { RequestLogModule } from '../request-log/request-log.module';
 import { FlagEntity } from '../database/entities/flag.entity';
 import { CachedFlagsPersistence } from './cached-flags-persistence';
 import { FlagsAdminController } from './flags-admin.controller';
@@ -12,7 +13,10 @@ import { FlagsService } from './flags.service';
 import { FlagVersionEntity } from '../database/entities/flag-version.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([FlagEntity, FlagVersionEntity])],
+  imports: [
+    TypeOrmModule.forFeature([FlagEntity, FlagVersionEntity]),
+    RequestLogModule,
+  ],
   controllers: [FlagsSdkController, FlagsAdminController],
   providers: [
     FlagsPersistenceRepository,
@@ -20,5 +24,6 @@ import { FlagVersionEntity } from '../database/entities/flag-version.entity';
     { provide: FLAGS_PERSISTENCE, useExisting: CachedFlagsPersistence },
     FlagsService,
   ],
+  exports: [FlagsService],
 })
 export class FlagsModule {}

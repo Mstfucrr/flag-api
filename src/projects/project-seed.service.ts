@@ -23,10 +23,13 @@ export class ProjectSeedService implements OnModuleInit {
       if (existing) {
         return;
       }
-      await this.projectsService.createProject({
-        name: 'Portal',
-        key: 'portal',
-      });
+      await this.projectsService.createProject(
+        {
+          name: 'Portal',
+          key: 'portal',
+        },
+        'system',
+      );
       this.logger.log('Seeded default project: portal');
     } catch (e) {
       this.logger.warn(

@@ -78,6 +78,29 @@ export class MemoryFlagsPersistence implements IFlagsPersistence {
     return Promise.resolve();
   }
 
+  patchMetadata(
+    projectKey: string,
+    flagKey: string,
+    fields: { description?: string; enabled?: boolean },
+  ): Promise<void> {
+    const id = this.rowId(projectKey, flagKey);
+    const v = this.map.get(id);
+    if (!v) {
+      throw new NotFoundException(
+        `Flag row missing for metadata patch: ${flagKey}`,
+      );
+    }
+    const next: FlagAggregate = {
+      ...v,
+      description:
+        fields.description !== undefined ? fields.description : v.description,
+      enabled: fields.enabled !== undefined ? fields.enabled : v.enabled,
+      updatedAt: new Date().toISOString(),
+    };
+    this.map.set(id, structuredClone(next));
+    return Promise.resolve();
+  }
+
   delete(projectKey: string, flagKey: string): Promise<void> {
     this.map.delete(this.rowId(projectKey, flagKey));
     return Promise.resolve();

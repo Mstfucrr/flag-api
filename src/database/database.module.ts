@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { FlagEntity } from './entities/flag.entity';
 import { ProjectEntity } from './entities/project.entity';
 import { FlagVersionEntity } from './entities/flag-version.entity';
+import { RequestLogEntity } from './entities/request-log.entity';
 
 @Module({
   imports: [
@@ -21,7 +22,12 @@ import { FlagVersionEntity } from './entities/flag-version.entity';
 
         const base = {
           type: 'postgres' as const,
-          entities: [ProjectEntity, FlagEntity, FlagVersionEntity],
+          entities: [
+            ProjectEntity,
+            FlagEntity,
+            FlagVersionEntity,
+            RequestLogEntity,
+          ],
           synchronize,
           autoLoadEntities: false,
         };

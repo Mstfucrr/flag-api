@@ -1,4 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { FlagsService } from '../flags/flags.service';
+import { RequestLogService } from '../request-log/request-log.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import {
   ProjectResponseDto,
@@ -10,15 +12,28 @@ import { ProjectsRepository } from './projects.repository';
 export class ProjectsService {
   private readonly logger = new Logger(ProjectsService.name);
 
-  constructor(private readonly projectsRepository: ProjectsRepository) {}
+  constructor(
+    private readonly projectsRepository: ProjectsRepository,
+    private readonly requestLog: RequestLogService,
+    private readonly flagsService: FlagsService,
+  ) {}
 
-  async createProject(dto: CreateProjectDto): Promise<ProjectResponseDto> {
+  async createProject(
+    dto: CreateProjectDto,
+    principalId: string,
+  ): Promise<ProjectResponseDto> {
     const key = dto.key.trim();
     const entity = await this.projectsRepository.create({
       name: dto.name.trim(),
       key,
     });
     this.logger.log(`Project created: key=${key} name=${entity.name}`);
+    await this.requestLog.append({
+      resourceId: '/feature-flags/projects',
+      principalId,
+      action: 'create-project',
+      request: { key: entity.key, name: entity.name },
+    });
     return mapProjectToResponse(entity);
   }
 
@@ -30,5 +45,24 @@ export class ProjectsService {
   async findByKey(key: string): Promise<ProjectResponseDto | null> {
     const row = await this.projectsRepository.findByKey(key);
     return row ? mapProjectToResponse(row) : null;
+  }
+
+  async removeProject(projectKey: string, principalId: string): Promise<void> {
+    const k = projectKey.trim();
+    const existing = await this.projectsRepository.findByKey(k);
+    if (!existing) {
+      throw new NotFoundException(`Project not found: ${k}`);
+    }
+    const removedFlagKeys = await this.flagsService.purgeProjectFlags(k);
+    await this.projectsRepository.deleteByKey(k);
+    this.logger.log(
+      `Project deleted: key=${k} removedFlags=${removedFlagKeys.length}`,
+    );
+    await this.requestLog.append({
+      resourceId: '/feature-flags/projects',
+      principalId,
+      action: 'delete-project',
+      request: { key: k, removedFlagKeys },
+    });
   }
 }

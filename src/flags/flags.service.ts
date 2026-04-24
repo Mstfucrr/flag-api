@@ -16,6 +16,40 @@ import {
   type IFlagsPersistence,
 } from './flags-persistence.repository';
 import { evaluateFlag } from '@core-sdk/feature-flags-core';
+import { RequestLogService } from '../request-log/request-log.service';
+
+function projectFlagsResourceId(projectKey: string): string {
+  return `/feature-flags/projects/${projectKey.trim()}`;
+}
+
+function canonicalRulesJson(rules: RuleRow[]): string {
+  return JSON.stringify(
+    [...structuredClone(rules)].sort((a, b) => a.id.localeCompare(b.id)),
+  );
+}
+
+function jsonEqual(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function diffChangedFields<K extends string>(
+  keys: readonly K[],
+  before: Record<K, unknown>,
+  after: Record<K, unknown>,
+): {
+  oldData: Partial<Record<K, unknown>>;
+  newData: Partial<Record<K, unknown>>;
+} {
+  const oldData: Partial<Record<K, unknown>> = {};
+  const newData: Partial<Record<K, unknown>> = {};
+  for (const k of keys) {
+    if (!jsonEqual(before[k], after[k])) {
+      oldData[k] = before[k];
+      newData[k] = after[k];
+    }
+  }
+  return { oldData, newData };
+}
 
 type DeclarativeRule = {
   id: string;
@@ -36,6 +70,7 @@ export class FlagsService {
 
   constructor(
     @Inject(FLAGS_PERSISTENCE) private readonly flags: IFlagsPersistence,
+    private readonly requestLog: RequestLogService,
   ) {}
 
   async create(dto: CreateFlagDto, principalId: string) {
@@ -75,6 +110,18 @@ export class FlagsService {
     this.logger.log(
       `Flag created: project=${projectKey} key=${key} v=1 principal=${principalId}`,
     );
+    await this.requestLog.append({
+      resourceId: projectFlagsResourceId(projectKey),
+      principalId,
+      action: 'create-flag',
+      request: {
+        flagKey: key,
+        version: aggregate.currentVersion,
+        description: aggregate.description,
+        enabled: aggregate.enabled,
+        rules: aggregate.rules,
+      },
+    });
     return this.toAdminCurrent(aggregate);
   }
 
@@ -88,6 +135,22 @@ export class FlagsService {
     const p = projectKey.trim();
     const list = await this.flags.listByProject(p);
     return list.map((a) => this.toAdminCurrent(a));
+  }
+
+  /** Removes all flags for a project (DB + cache). Does not write request logs. */
+  async purgeProjectFlags(projectKey: string): Promise<string[]> {
+    const pk = projectKey.trim();
+    const list = await this.flags.listByProject(pk);
+    const keys = list.map((a) => a.key);
+    for (const fk of keys) {
+      if (await this.flags.existsByProjectAndFlagKey(pk, fk)) {
+        await this.flags.delete(pk, fk);
+      }
+    }
+    this.logger.log(
+      `Purged flags for project=${pk} count=${keys.length} keys=${keys.join(',')}`,
+    );
+    return keys;
   }
 
   async evaluate(
@@ -147,7 +210,23 @@ export class FlagsService {
     if (agg.enabled === enabled) {
       return this.toAdminCurrent(agg);
     }
-    return await this.update(pk, fk, { enabled }, principalId);
+    await this.flags.patchMetadata(pk, fk, { enabled });
+    const refreshed = await this.flags.findByLookup(pk, fk);
+    if (!refreshed) {
+      throw new NotFoundException(`Flag not found: ${fk}`);
+    }
+    await this.requestLog.append({
+      resourceId: projectFlagsResourceId(pk),
+      principalId,
+      action: 'update-flag-metadata',
+      request: {
+        flagKey: fk,
+        version: refreshed.currentVersion,
+        oldData: { enabled: agg.enabled },
+        newData: { enabled: refreshed.enabled },
+      },
+    });
+    return this.toAdminCurrent(refreshed);
   }
 
   async update(
@@ -161,6 +240,54 @@ export class FlagsService {
     if (!agg) {
       throw new NotFoundException(`Flag not found: ${routeKey}`);
     }
+
+    const rulesChanged =
+      dto.rules !== undefined &&
+      canonicalRulesJson(dto.rules) !== canonicalRulesJson(agg.rules);
+    const descChanged =
+      dto.description !== undefined && dto.description !== agg.description;
+    const enabledChanged =
+      dto.enabled !== undefined && dto.enabled !== agg.enabled;
+
+    if (!rulesChanged && (descChanged || enabledChanged)) {
+      await this.flags.patchMetadata(pk, routeKey, {
+        ...(dto.description !== undefined
+          ? { description: dto.description }
+          : {}),
+        ...(dto.enabled !== undefined ? { enabled: dto.enabled } : {}),
+      });
+      const refreshed = await this.flags.findByLookup(pk, routeKey);
+      if (!refreshed) {
+        throw new NotFoundException(`Flag not found: ${routeKey}`);
+      }
+      const oldData: Record<string, unknown> = {};
+      const newData: Record<string, unknown> = {};
+      if (enabledChanged) {
+        oldData.enabled = agg.enabled;
+        newData.enabled = refreshed.enabled;
+      }
+      if (descChanged) {
+        oldData.description = agg.description;
+        newData.description = refreshed.description;
+      }
+      await this.requestLog.append({
+        resourceId: projectFlagsResourceId(pk),
+        principalId,
+        action: 'update-flag-metadata',
+        request: {
+          flagKey: routeKey,
+          version: refreshed.currentVersion,
+          oldData,
+          newData,
+        },
+      });
+      return this.toAdminCurrent(refreshed);
+    }
+
+    if (!rulesChanged && !descChanged && !enabledChanged) {
+      return this.toAdminCurrent(agg);
+    }
+
     const rules = dto.rules !== undefined ? dto.rules : agg.rules;
     const next: FlagAggregate = {
       ...agg,
@@ -190,6 +317,33 @@ export class FlagsService {
     this.logger.log(
       `Flag updated: project=${pk} key=${next.key} v=${next.currentVersion} principal=${principalId}`,
     );
+    const beforeSnap = {
+      description: agg.description,
+      enabled: agg.enabled,
+      rules: agg.rules,
+      version: agg.currentVersion,
+    };
+    const afterSnap = {
+      description: next.description,
+      enabled: next.enabled,
+      rules: next.rules,
+      version: next.currentVersion,
+    };
+    const { oldData, newData } = diffChangedFields(
+      ['description', 'enabled', 'rules', 'version'],
+      beforeSnap,
+      afterSnap,
+    );
+    await this.requestLog.append({
+      resourceId: projectFlagsResourceId(pk),
+      principalId,
+      action: 'update-flag',
+      request: {
+        flagKey: routeKey,
+        oldData,
+        newData,
+      },
+    });
     return this.toAdminCurrent(next);
   }
 
@@ -222,7 +376,7 @@ export class FlagsService {
     };
   }
 
-  async remove(projectKey: string, key: string) {
+  async remove(projectKey: string, key: string, principalId: string) {
     const pk = projectKey.trim();
     const fk = key.trim();
     if (!(await this.flags.existsByProjectAndFlagKey(pk, fk))) {
@@ -230,6 +384,12 @@ export class FlagsService {
     }
     await this.flags.delete(pk, fk);
     this.logger.log(`Flag deleted: project=${pk} key=${fk}`);
+    await this.requestLog.append({
+      resourceId: projectFlagsResourceId(pk),
+      principalId,
+      action: 'delete-flag',
+      request: { flagKey: fk },
+    });
   }
 
   async rollback(
@@ -276,6 +436,16 @@ export class FlagsService {
     this.logger.log(
       `Flag rollback: project=${pk} key=${merged.key} restoredFrom=v${targetVersion} newVersion=v${merged.currentVersion} principal=${principalId}`,
     );
+    await this.requestLog.append({
+      resourceId: projectFlagsResourceId(pk),
+      principalId,
+      action: 'rollback-flag',
+      request: {
+        flagKey: routeKey,
+        restoredFromVersion: targetVersion,
+        newVersion: merged.currentVersion,
+      },
+    });
     return this.toAdminCurrent(merged);
   }
 
