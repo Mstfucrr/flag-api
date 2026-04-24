@@ -3,6 +3,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import type { RuleRow } from './types/flag.types';
@@ -31,6 +32,8 @@ type EvaluateFlagFn = (
 
 @Injectable()
 export class FlagsService {
+  private readonly logger = new Logger(FlagsService.name);
+
   constructor(
     @Inject(FLAGS_PERSISTENCE) private readonly flags: IFlagsPersistence,
   ) {}
@@ -69,6 +72,9 @@ export class FlagsService {
       ],
     };
     await this.flags.insert(aggregate);
+    this.logger.log(
+      `Flag created: project=${projectKey} key=${key} v=1 principal=${principalId}`,
+    );
     return this.toAdminCurrent(aggregate);
   }
 
@@ -181,6 +187,9 @@ export class FlagsService {
       createdBy: principalId,
     });
     await this.flags.updateByLookup(next, routeKey);
+    this.logger.log(
+      `Flag updated: project=${pk} key=${next.key} v=${next.currentVersion} principal=${principalId}`,
+    );
     return this.toAdminCurrent(next);
   }
 
@@ -220,6 +229,7 @@ export class FlagsService {
       throw new NotFoundException(`Flag not found: ${key}`);
     }
     await this.flags.delete(pk, fk);
+    this.logger.log(`Flag deleted: project=${pk} key=${fk}`);
   }
 
   async rollback(
@@ -263,6 +273,9 @@ export class FlagsService {
       createdBy: principalId,
     });
     await this.flags.updateByLookup(merged, routeKey);
+    this.logger.log(
+      `Flag rollback: project=${pk} key=${merged.key} restoredFrom=v${targetVersion} newVersion=v${merged.currentVersion} principal=${principalId}`,
+    );
     return this.toAdminCurrent(merged);
   }
 
