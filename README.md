@@ -1,55 +1,63 @@
 # feature-flag-api
 
-NestJS tabanlı **özellik bayrağı (feature flag)** servisi: projeler ve bayraklar PostgreSQL (TypeORM) üzerinde saklanır; çalışma zamanı değerlendirmesi ve yönetim uçları sunulur. Özellik değerlendirme motoru olarak **`@core-sdk/feature-flags-core`** kullanılır.
+`feature-flag-api`, NestJS tabanlı bir özellik bayrağı servisidir. Proje ve bayrak verilerini PostgreSQL üzerinde tutar; runtime değerlendirme, yönetim işlemleri, sürüm geçmişi ve denetim kayıtlarını sağlar.
 
-## Özellikler (özet)
+## Temel yetenekler
 
-- **Projeler** — oluşturma, listeleme, proje silme (ilişkili bayraklar temizlenir).
-- **Bayraklar** — oluşturma, güncelleme, silme, sürüm geçmişi, geri alma (rollback).
-- **Çalışma zamanı API** — `GET /projects/:projectKey/flags`, `POST …/flags/evaluate` (SDK ile uyumlu).
-- **İstek günlüğü (request log)** — yönetim işlemleri için denetim izi.
-- **Swagger** — uygulama ayakta iken `/docs` (JSON: `/docs/json`).
-- **CORS** — `Authorization`, `X-Principal-Id` vb. başlıklar açıkça listelenir (portal / harici istemciler için).
+- Proje oluşturma, listeleme, silme
+- Bayrak oluşturma, güncelleme, silme
+- Sürüm geçmişi ve rollback
+- Runtime evaluate uçları (`/projects/:projectKey/flags/evaluate`)
+- Request log sorgulama ve yönetim izlenebilirliği
+- Swagger dokümantasyonu (`/docs`, `/docs/json`)
 
 ## Gereksinimler
 
-- Node.js **18+**
-- **pnpm** (projede pnpm kullanımı önerilir)
-- PostgreSQL ve yapılandırma ortam değişkenleri (ör. veritabanı bağlantısı; ayrıntılar için `src/config` ve `.env` örneklerinize bakın)
+- Node.js 18+
+- pnpm
+- PostgreSQL
+- Gerekli ortam değişkenleri (`PORT`, DB bağlantı ayarları vb.)
 
-## Kurulum ve çalıştırma
+## Kurulum
 
 ```bash
 pnpm install
 ```
 
-Geliştirme (dosya izleme):
+## Çalıştırma
+
+Geliştirme:
 
 ```bash
 pnpm run start:dev
 ```
 
-Varsayılan dinleme portu **`4000`** (`PORT` ile değiştirilebilir). API kökü üzerinden Swagger’a gidin: `http://localhost:4000/docs`.
-
-Üretim derlemesi ve çalıştırma:
+Üretim:
 
 ```bash
 pnpm run build
 pnpm run start:prod
 ```
 
-## Testler
+Varsayılan port: `4000` (değişken: `PORT`).
+
+## Test
 
 ```bash
-pnpm run test          # birim testleri
-pnpm run test:e2e      # e2e
-pnpm run test:cov      # kapsam
+pnpm run test
+pnpm run test:e2e
+pnpm run test:cov
 ```
 
-## İlgili depolar
+## SDK uyumu
 
-- **`core-sdk`** — `@core-sdk/feature-flags-sdk` ve `@core-sdk/feature-flags-react` ile tarayıcı / Node istemcileri bu API’ye bağlanır.
+`@core-sdk/feature-flags-sdk` şu uçları kullanır:
+
+- `GET /projects/:projectKey/flags`
+- `POST /projects/:projectKey/flags/evaluate`
+- `GET /projects/:projectKey/flags/:flagKey/history`
+- `GET /projects/:projectKey/flags/:flagKey/versions/:version`
 
 ## Lisans
 
-Proje `package.json` içinde belirtildiği gibi **UNLICENSED** (private) olarak işaretlenebilir; kurum içi kullanım için lisansı kendi politikalarınıza göre güncelleyin.
+Proje private/UNLICENSED kullanım modeliyle yönetilebilir. Kurumsal lisans politikanıza göre güncelleyin.
