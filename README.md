@@ -49,6 +49,12 @@ pnpm run test:e2e
 pnpm run test:cov
 ```
 
+## Bayrak `rules` şekli (0.0.4+)
+
+Her öğe bir **koşul** (`id`, `active`, `filters`). Koşullar değerlendirmede **VEYA**; aynı koşuldaki `filters` öğeleri **VE** ile birleşir. Her filtre: `field`, `operator`, `value` (isteğe bağlı `id`). Düz `{ id, field, operator, value, active }` satırları çekirdek pakette otomatik olarak tek filtrelı koşula normalize edilir.
+
+Bu API sürümü `@core-sdk/feature-flags-core` **^0.5.0** kullanır.
+
 ## SDK uyumu
 
 `@core-sdk/feature-flags-sdk` şu uçları kullanır:

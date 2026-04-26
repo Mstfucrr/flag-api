@@ -6,7 +6,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import type { RuleRow } from './types/flag.types';
+import type { FlagConditionRow } from './types/flag.types';
 import { CreateFlagDto } from './dto/create-flag.dto';
 import { UpdateFlagDto } from './dto/update-flag.dto';
 import type { FlagSnapshotModel } from './models/flag-snapshot.model';
@@ -17,53 +17,17 @@ import {
 } from './flags-persistence.repository';
 import { evaluateFlag } from '@core-sdk/feature-flags-core';
 import { RequestLogService } from '../request-log/request-log.service';
+import {
+  canonicalRulesJson,
+  diffChangedFields,
+  projectFlagsResourceId,
+} from './flags.service.utils';
 
-function projectFlagsResourceId(projectKey: string): string {
-  return `/feature-flags/projects/${projectKey.trim()}`;
-}
-
-function canonicalRulesJson(rules: RuleRow[]): string {
-  return JSON.stringify(
-    [...structuredClone(rules)].sort((a, b) => a.id.localeCompare(b.id)),
-  );
-}
-
-function jsonEqual(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
-}
-
-function diffChangedFields<K extends string>(
-  keys: readonly K[],
-  before: Record<K, unknown>,
-  after: Record<K, unknown>,
-): {
-  oldData: Partial<Record<K, unknown>>;
-  newData: Partial<Record<K, unknown>>;
-} {
-  const oldData: Partial<Record<K, unknown>> = {};
-  const newData: Partial<Record<K, unknown>> = {};
-  for (const k of keys) {
-    if (!jsonEqual(before[k], after[k])) {
-      oldData[k] = before[k];
-      newData[k] = after[k];
-    }
-  }
-  return { oldData, newData };
-}
-
-type DeclarativeRule = {
-  id: string;
-  field: string;
-  operator: RuleRow['operator'];
-  value: unknown;
-  active: boolean;
-};
-
-type EvaluateFlagFn = (
-  definition: { enabled: boolean; rules: DeclarativeRule[] },
-  context: Record<string, unknown>,
-) => { enabled: boolean };
-
+/**
+ * Feature flag yaşam döngüsü: oluşturma, okuma, güncelleme, silme, versiyon geçmişi,
+ * rollback ve runtime değerlendirme. Kalıcılık {@link IFlagsPersistence} üzerinden;
+ * denetim izi {@link RequestLogService} ile yazılır.
+ */
 @Injectable()
 export class FlagsService {
   private readonly logger = new Logger(FlagsService.name);
@@ -73,6 +37,7 @@ export class FlagsService {
     private readonly requestLog: RequestLogService,
   ) {}
 
+  /** Yeni flag kaydı (v1); çakışan proje+key varsa {@link ConflictException}. */
   async create(dto: CreateFlagDto, principalId: string) {
     const projectKey = dto.projectKey.trim();
     const key = dto.key.trim();
@@ -125,19 +90,24 @@ export class FlagsService {
     return this.toAdminCurrent(aggregate);
   }
 
+  /** SDK / hafif liste: projedeki flag’lerin sadece `key` bilgisi. */
   async findAll(projectKey: string) {
     const p = projectKey.trim();
     const list = await this.flags.listByProject(p);
     return list.map((a) => this.toRuntime(a));
   }
 
+  /** Admin: projedeki tüm flag’lerin tam konfigürasyonu. */
   async findAllAdmin(projectKey: string) {
     const p = projectKey.trim();
     const list = await this.flags.listByProject(p);
     return list.map((a) => this.toAdminCurrent(a));
   }
 
-  /** Removes all flags for a project (DB + cache). Does not write request logs. */
+  /**
+   * Projeye ait tüm flag kayıtlarını siler (DB + önbellek).
+   * Request log yazmaz.
+   */
   async purgeProjectFlags(projectKey: string): Promise<string[]> {
     const pk = projectKey.trim();
     const list = await this.flags.listByProject(pk);
@@ -153,6 +123,10 @@ export class FlagsService {
     return keys;
   }
 
+  /**
+   * Verilen bağlamda birden fazla flag için `enabled` sonucu üretir
+   * (`@core-sdk/feature-flags-core` `evaluateFlag`).
+   */
   async evaluate(
     projectKey: string,
     flagKeys: string[],
@@ -179,6 +153,7 @@ export class FlagsService {
     return { results };
   }
 
+  /** Tek flag, runtime şekli (yalnızca key). */
   async findOne(projectKey: string, key: string) {
     const agg = await this.flags.findByLookup(projectKey, key);
     if (!agg) {
@@ -187,6 +162,7 @@ export class FlagsService {
     return this.toRuntime(agg);
   }
 
+  /** Tek flag, admin şekli (kurallar + versiyon). */
   async findOneAdmin(projectKey: string, key: string) {
     const agg = await this.flags.findByLookup(projectKey, key);
     if (!agg) {
@@ -195,6 +171,7 @@ export class FlagsService {
     return this.toAdminCurrent(agg);
   }
 
+  /** Sadece `enabled` alanını günceller; değişiklik yoksa mevcut aggregate döner. */
   async setEnabled(
     projectKey: string,
     flagKey: string,
@@ -229,6 +206,10 @@ export class FlagsService {
     return this.toAdminCurrent(refreshed);
   }
 
+  /**
+   * Tam güncelleme: kurallar / açıklama / master `enabled`.
+   * Kurallar değişmediyse sadece metadata patch + log; kurallar değiştiyse yeni versiyon.
+   */
   async update(
     projectKey: string,
     routeKey: string,
@@ -347,6 +328,7 @@ export class FlagsService {
     return this.toAdminCurrent(next);
   }
 
+  /** Belirli versiyonun immutable snapshot’ı (geçmiş görüntüleme). */
   async getVersionSnapshot(projectKey: string, key: string, version: number) {
     const agg = await this.flags.findByLookup(projectKey, key);
     if (!agg) {
@@ -364,6 +346,7 @@ export class FlagsService {
     };
   }
 
+  /** Versiyon listesi (yeniden eskiye sıralı). */
   async getHistory(projectKey: string, key: string) {
     const agg = await this.flags.findByLookup(projectKey, key);
     if (!agg) {
@@ -376,6 +359,7 @@ export class FlagsService {
     };
   }
 
+  /** Flag’i kalıcıdan kaldırır ve silme logu yazar. */
   async remove(projectKey: string, key: string, principalId: string) {
     const pk = projectKey.trim();
     const fk = key.trim();
@@ -392,6 +376,10 @@ export class FlagsService {
     });
   }
 
+  /**
+   * Hedef versiyonun snapshot’ını mevcut üzerine uygular; yeni bir versiyon numarası üretir
+   * (içerik eski sürüme döner, versiyon sayacı ilerler).
+   */
   async rollback(
     projectKey: string,
     routeKey: string,
@@ -449,11 +437,12 @@ export class FlagsService {
     return this.toAdminCurrent(merged);
   }
 
+  /** Versiyon dizisine yazılacak anlık immutable görüntü. */
   private buildSnapshot(p: {
     key: string;
     description: string;
     enabled: boolean;
-    rules: RuleRow[];
+    rules: FlagConditionRow[];
   }): FlagSnapshotModel {
     return {
       key: p.key,
@@ -463,17 +452,22 @@ export class FlagsService {
     };
   }
 
+  /** Snapshot’ı serileştirme / dışarı sızdırmayı önlemek için derin kopya. */
   private deepCloneSnapshot(s: FlagSnapshotModel): FlagSnapshotModel {
     return structuredClone(s);
   }
 
-  /** SDK/public GET: key only — evaluation is via POST …/flags/evaluate with context. */
+  /**
+   * SDK / public GET yanıtı: yalnızca `key`.
+   * Gerçek `enabled` değeri POST …/evaluate + bağlam ile alınır.
+   */
   private toRuntime(agg: FlagAggregate) {
     return {
       key: agg.key,
     };
   }
 
+  /** Admin API: proje, kurallar, güncel versiyon ve zaman damgası. */
   private toAdminCurrent(agg: FlagAggregate) {
     return {
       projectKey: agg.projectKey,
@@ -486,23 +480,19 @@ export class FlagsService {
     };
   }
 
+  /**
+   * Kalıcı kuralları SDK’nın `evaluateFlag` biçimine sarar;
+   * master `enabled` kapalıysa veya hiçbir koşul eşleşmezse false döner.
+   */
   private evaluateRuntimeEnabled(
     masterEnabled: boolean,
-    rules: RuleRow[],
+    rules: FlagConditionRow[],
     context: Record<string, unknown>,
   ): boolean {
-    const evaluateFlagStrict = evaluateFlag as EvaluateFlagFn;
-    const declarativeRules: DeclarativeRule[] = rules.map((rule) => ({
-      id: rule.id,
-      field: rule.field,
-      operator: rule.operator,
-      value: rule.value,
-      active: rule.active !== false,
-    }));
-    return evaluateFlagStrict(
+    return evaluateFlag(
       {
         enabled: masterEnabled,
-        rules: declarativeRules,
+        rules,
       },
       context,
     ).enabled;

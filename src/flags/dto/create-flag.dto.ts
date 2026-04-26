@@ -9,7 +9,7 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
-import { RuleRowDto } from './rule-row.dto';
+import { FlagConditionRowDto } from './flag-condition.dto';
 
 export class CreateFlagDto {
   @ApiProperty({
@@ -37,9 +37,9 @@ export class CreateFlagDto {
   @IsBoolean()
   enabled!: boolean;
 
-  @ApiProperty({ type: [RuleRowDto] })
+  @ApiProperty({ type: [FlagConditionRowDto] })
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => RuleRowDto)
-  rules!: RuleRowDto[];
+  @Type(() => FlagConditionRowDto)
+  rules!: FlagConditionRowDto[];
 }

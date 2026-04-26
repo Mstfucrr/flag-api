@@ -5,6 +5,18 @@ import { FLAGS_PERSISTENCE } from './flags-persistence.repository';
 import { FlagsService } from './flags.service';
 import { MemoryFlagsPersistence } from './memory-flags-persistence';
 
+const oneFilterCondition = (
+  id: string,
+  field: string,
+  operator: 'eq' | 'neq' | 'contains' | 'in' | 'gt' | 'lt',
+  value: unknown,
+  active = true,
+) => ({
+  id,
+  active,
+  filters: [{ field, operator, value }],
+});
+
 describe('FlagsService', () => {
   let service: FlagsService;
   const mockRequestLog = { append: jest.fn().mockResolvedValue(undefined) };
@@ -32,15 +44,7 @@ describe('FlagsService', () => {
           projectKey: 'proj-safe',
           key: 'chat',
           enabled: true,
-          rules: [
-            {
-              id: 'r1',
-              field: 'accountId',
-              operator: 'eq',
-              value: '123',
-              active: true,
-            },
-          ],
+          rules: [oneFilterCondition('r1', 'accountId', 'eq', '123')],
         },
         'u1',
       );
@@ -133,15 +137,7 @@ describe('FlagsService', () => {
           key: 'rule-bump',
           description: 'd',
           enabled: true,
-          rules: [
-            {
-              id: 'r1',
-              field: 'x',
-              operator: 'eq',
-              value: 1,
-              active: true,
-            },
-          ],
+          rules: [oneFilterCondition('r1', 'x', 'eq', 1)],
         },
         'u1',
       );
@@ -149,15 +145,7 @@ describe('FlagsService', () => {
         'p',
         'rule-bump',
         {
-          rules: [
-            {
-              id: 'r1',
-              field: 'x',
-              operator: 'eq',
-              value: 2,
-              active: true,
-            },
-          ],
+          rules: [oneFilterCondition('r1', 'x', 'eq', 2)],
         },
         'u2',
       );
@@ -173,15 +161,7 @@ describe('FlagsService', () => {
           key: 'roll-key',
           description: 'a',
           enabled: true,
-          rules: [
-            {
-              id: 'r1',
-              field: 'x',
-              operator: 'eq',
-              value: 1,
-              active: true,
-            },
-          ],
+          rules: [oneFilterCondition('r1', 'x', 'eq', 1)],
         },
         'u1',
       );
@@ -249,15 +229,7 @@ describe('FlagsService', () => {
           projectKey: 'partner-frontend',
           key: 'show_live_support_chat',
           enabled: true,
-          rules: [
-            {
-              id: 'r1',
-              field: 'accountId',
-              operator: 'eq',
-              value: '9742948',
-              active: true,
-            },
-          ],
+          rules: [oneFilterCondition('r1', 'accountId', 'eq', '9742948')],
         },
         'u1',
       );

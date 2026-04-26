@@ -1,4 +1,4 @@
-import type { RuleRow } from '../../flags/types/flag.types';
+import type { FlagConditionRow } from '../../flags/types/flag.types';
 import {
   Column,
   Entity,
@@ -27,7 +27,7 @@ export class FlagEntity {
   enabled!: boolean;
 
   @Column({ type: 'json', default: [] })
-  rules!: RuleRow[];
+  rules!: FlagConditionRow[];
 
   @Column({ name: 'current_version', type: 'int' })
   currentVersion!: number;

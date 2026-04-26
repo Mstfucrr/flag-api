@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { FlagEntity } from '../database/entities/flag.entity';
 import type { VersionEntryModel } from './models/version-entry.model';
-import type { RuleRow } from './types/flag.types';
+import type { FlagConditionRow } from './types/flag.types';
 import { FlagVersionEntity } from '../database/entities/flag-version.entity';
 
 /** Matches admin controller default when `x-principal-id` is missing; also backfills legacy rows. */
@@ -27,7 +27,7 @@ export interface FlagAggregate {
   key: string;
   description: string;
   enabled: boolean;
-  rules: RuleRow[];
+  rules: FlagConditionRow[];
   currentVersion: number;
   updatedAt: string;
   versions: VersionEntryModel[];
