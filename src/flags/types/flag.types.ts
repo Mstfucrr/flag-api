@@ -1,4 +1,6 @@
-export type RuleOperator = 'eq' | 'neq' | 'contains' | 'in' | 'gt' | 'lt';
+import type { RuleOperator } from '@core-sdk/feature-flags-core';
+
+export type { RuleOperator };
 
 /** One comparison inside a condition (AND with sibling filters). */
 export interface FlagFilterRow {

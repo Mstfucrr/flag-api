@@ -1,3 +1,7 @@
+import {
+  RULE_OPERATORS,
+  type RuleOperator,
+} from '@core-sdk/feature-flags-core';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
@@ -11,6 +15,8 @@ import {
   ValidateNested,
 } from 'class-validator';
 
+const OPERATOR_ENUM = RULE_OPERATORS as readonly RuleOperator[];
+
 export class FlagFilterRowDto {
   @ApiPropertyOptional({ example: 'f-1' })
   @IsOptional()
@@ -22,12 +28,12 @@ export class FlagFilterRowDto {
   field!: string;
 
   @ApiProperty({
-    enum: ['eq', 'neq', 'contains', 'in', 'gt', 'lt'],
+    enum: OPERATOR_ENUM,
     example: 'eq',
   })
   @IsString()
-  @IsIn(['eq', 'neq', 'contains', 'in', 'gt', 'lt'])
-  operator!: 'eq' | 'neq' | 'contains' | 'in' | 'gt' | 'lt';
+  @IsIn(OPERATOR_ENUM)
+  operator!: RuleOperator;
 
   @ApiProperty({
     description: 'Compared value (string, number, boolean, or JSON)',

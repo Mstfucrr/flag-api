@@ -1,3 +1,4 @@
+import type { RuleOperator } from '@core-sdk/feature-flags-core';
 import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { RequestLogService } from '../request-log/request-log.service';
@@ -8,7 +9,7 @@ import { MemoryFlagsPersistence } from './memory-flags-persistence';
 const oneFilterCondition = (
   id: string,
   field: string,
-  operator: 'eq' | 'neq' | 'contains' | 'in' | 'gt' | 'lt',
+  operator: RuleOperator,
   value: unknown,
   active = true,
 ) => ({
