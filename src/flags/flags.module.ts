@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { RequestLogModule } from '../request-log/request-log.module';
+import { RedisCacheModule } from '../cache/redis-cache.module';
 import { FlagEntity } from '../database/entities/flag.entity';
-import { CachedFlagsPersistence } from './cached-flags-persistence';
+import { FlagVersionEntity } from '../database/entities/flag-version.entity';
+import { RequestLogModule } from '../request-log/request-log.module';
+import { FeatureFlagRuntimeCacheService } from './cache/feature-flag-runtime-cache.service';
 import { FlagsAdminController } from './flags-admin.controller';
 import { FlagsSdkController } from './flags-sdk.controller';
 import {
@@ -10,18 +12,18 @@ import {
   FlagsPersistenceRepository,
 } from './flags-persistence.repository';
 import { FlagsService } from './flags.service';
-import { FlagVersionEntity } from '../database/entities/flag-version.entity';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([FlagEntity, FlagVersionEntity]),
     RequestLogModule,
+    RedisCacheModule,
   ],
   controllers: [FlagsSdkController, FlagsAdminController],
   providers: [
     FlagsPersistenceRepository,
-    CachedFlagsPersistence,
-    { provide: FLAGS_PERSISTENCE, useExisting: CachedFlagsPersistence },
+    { provide: FLAGS_PERSISTENCE, useExisting: FlagsPersistenceRepository },
+    FeatureFlagRuntimeCacheService,
     FlagsService,
   ],
   exports: [FlagsService],

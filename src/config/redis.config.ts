@@ -25,6 +25,11 @@ export default registerAs('redis', () => ({
   port: toInt(process.env.REDIS_PORT, 6379),
   password: process.env.REDIS_PASSWORD ?? '',
   db: toInt(process.env.REDIS_DB, 0),
+  /** Tüm anahtarlara eklenen önek (`RedisService`). */
   keyPrefix: process.env.REDIS_KEY_PREFIX ?? 'flag-api:',
-  flagsCacheTtlMs: toInt(process.env.FLAGS_CACHE_TTL_MS, 3600000),
+  /** SDK evaluate sonuç önbelleği varsayılan kapalı; açılırsa düşük cardinality hash kullanın. */
+  runtimeEvaluateCacheEnabled: toBool(
+    process.env.RUNTIME_EVAL_CACHE_ENABLED,
+    false,
+  ),
 }));

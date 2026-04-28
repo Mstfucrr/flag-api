@@ -22,11 +22,14 @@ import {
   diffChangedFields,
   projectFlagsResourceId,
 } from './flags.service.utils';
+import { FeatureFlagRuntimeCacheService } from './cache/feature-flag-runtime-cache.service';
 
 /**
  * Feature flag yaşam döngüsü: oluşturma, okuma, güncelleme, silme, versiyon geçmişi,
  * rollback ve runtime değerlendirme. Kalıcılık {@link IFlagsPersistence} üzerinden;
  * denetim izi {@link RequestLogService} ile yazılır.
+ *
+ * Admin okumaları doğrudan DB’den; Redis yalnızca SDK evaluate için aktif snapshot önbelleğidir.
  */
 @Injectable()
 export class FlagsService {
@@ -35,6 +38,7 @@ export class FlagsService {
   constructor(
     @Inject(FLAGS_PERSISTENCE) private readonly flags: IFlagsPersistence,
     private readonly requestLog: RequestLogService,
+    private readonly runtimeCache: FeatureFlagRuntimeCacheService,
   ) {}
 
   /** Yeni flag kaydı (v1); çakışan proje+key varsa {@link ConflictException}. */
@@ -72,6 +76,7 @@ export class FlagsService {
       ],
     };
     await this.flags.insert(aggregate);
+    await this.runtimeCache.refreshRuntimeCacheAfterMutation(projectKey);
     this.logger.log(
       `Flag created: project=${projectKey} key=${key} v=1 principal=${principalId}`,
     );
@@ -117,10 +122,18 @@ export class FlagsService {
         await this.flags.delete(pk, fk);
       }
     }
+    await this.runtimeCache.clearProjectRuntime(pk);
     this.logger.log(
       `Purged flags for project=${pk} count=${keys.length} keys=${keys.join(',')}`,
     );
     return keys;
+  }
+
+  /**
+   * Manuel: DB’den runtime Redis önbelleğini yeniden kurar (Redis arızası sonrası iyileştirme).
+   */
+  async refreshRuntimeCacheManual(projectKey: string) {
+    return this.runtimeCache.refreshRuntimeCacheManual(projectKey.trim());
   }
 
   /**
@@ -134,18 +147,19 @@ export class FlagsService {
   ) {
     const p = projectKey.trim();
     const results: Record<string, { enabled: boolean }> = {};
-    const loaded = await this.flags.findManyByProjectAndKeys(p, flagKeys);
+    const snapshot =
+      await this.runtimeCache.loadOrRebuildSnapshotForEvaluate(p);
 
     for (const rawKey of flagKeys) {
       const key = rawKey.trim();
       if (!key) {
         continue;
       }
-      const agg = loaded.get(key);
+      const slice = snapshot.byKey[key];
       results[key] = {
         enabled:
-          agg !== undefined
-            ? this.evaluateRuntimeEnabled(agg.enabled, agg.rules, context)
+          slice !== undefined
+            ? this.evaluateRuntimeEnabled(slice.enabled, slice.rules, context)
             : false,
       };
     }
@@ -203,6 +217,7 @@ export class FlagsService {
         newData: { enabled: refreshed.enabled },
       },
     });
+    await this.runtimeCache.refreshRuntimeCacheAfterMutation(pk);
     return this.toAdminCurrent(refreshed);
   }
 
@@ -262,6 +277,7 @@ export class FlagsService {
           newData,
         },
       });
+      await this.runtimeCache.refreshRuntimeCacheAfterMutation(pk);
       return this.toAdminCurrent(refreshed);
     }
 
@@ -325,6 +341,7 @@ export class FlagsService {
         newData,
       },
     });
+    await this.runtimeCache.refreshRuntimeCacheAfterMutation(pk);
     return this.toAdminCurrent(next);
   }
 
@@ -367,6 +384,7 @@ export class FlagsService {
       throw new NotFoundException(`Flag not found: ${key}`);
     }
     await this.flags.delete(pk, fk);
+    await this.runtimeCache.refreshRuntimeCacheAfterMutation(pk);
     this.logger.log(`Flag deleted: project=${pk} key=${fk}`);
     await this.requestLog.append({
       resourceId: projectFlagsResourceId(pk),
@@ -434,6 +452,7 @@ export class FlagsService {
         newVersion: merged.currentVersion,
       },
     });
+    await this.runtimeCache.refreshRuntimeCacheAfterMutation(pk);
     return this.toAdminCurrent(merged);
   }
 

@@ -29,6 +29,19 @@ import { FlagsService } from './flags.service';
 export class FlagsAdminController {
   constructor(private readonly flagsService: FlagsService) {}
 
+  /** Redis runtime önbelleğini DB ile yeniden hizalar (felaket kurtarma). */
+  @Post('runtime-cache/refresh')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Rebuild Redis runtime snapshot from database',
+    description:
+      'Updates ff:runtime:flags:* and bumps ff:runtime:version; clears optional evaluate pattern.',
+  })
+  @ApiParam({ name: 'projectKey' })
+  refreshRuntimeCache(@Param('projectKey') projectKey: string) {
+    return this.flagsService.refreshRuntimeCacheManual(projectKey);
+  }
+
   @Post(':flagKey/rollback/:version')
   @ApiOperation({
     summary: 'Rollback to a previous version (creates a new version)',

@@ -35,7 +35,9 @@ describe('feature-flag-api (e2e)', () => {
   });
 
   it('/admin/projects (GET) returns array', async () => {
-    const res = await request(app.getHttpServer()).get('/admin/projects').expect(200);
+    const res = await request(app.getHttpServer())
+      .get('/admin/projects')
+      .expect(200);
     expect(Array.isArray(res.body)).toBe(true);
   });
 

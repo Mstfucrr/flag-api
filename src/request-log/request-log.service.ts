@@ -137,7 +137,7 @@ export class RequestLogService {
     let prev: string | undefined;
 
     if (hasMore && slice.length > 0) {
-      const last = slice[slice.length - 1]!;
+      const last = slice[slice.length - 1];
       next = encodeCursor({
         t: createdAtToMs(last.createdAt),
         id: last.id,
@@ -145,7 +145,7 @@ export class RequestLogService {
     }
 
     if (dto.cursor && slice.length > 0) {
-      const first = slice[0]!;
+      const first = slice[0];
       prev = encodeCursor({
         t: createdAtToMs(first.createdAt),
         id: first.id,

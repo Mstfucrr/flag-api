@@ -114,4 +114,40 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(`Redis del failed for key=${key}`, err);
     }
   }
+
+  /**
+   * Atomik sayaç (runtime sürümü için). Redis kapalıysa null.
+   */
+  async incr(key: string): Promise<number | null> {
+    if (!this.isReady()) {
+      return null;
+    }
+    try {
+      return await this.client!.incr(this.key(key));
+    } catch (err: unknown) {
+      this.logger.warn(`Redis incr failed for key=${key}`, err);
+      return null;
+    }
+  }
+
+  /**
+   * Glob benzeri desene uyan anahtarları siler (`MATCH` ile SCAN).
+   * `pattern` mantıksal anahtardır; `keyPrefix` otomatik eklenir.
+   */
+  async delByPattern(pattern: string): Promise<void> {
+    if (!this.isReady()) {
+      return;
+    }
+    const match = this.key(pattern);
+    try {
+      for await (const redisKey of this.client!.scanIterator({
+        MATCH: match,
+        COUNT: 128,
+      })) {
+        await this.client!.del(redisKey);
+      }
+    } catch (err: unknown) {
+      this.logger.warn(`Redis scan/del failed for pattern=${pattern}`, err);
+    }
+  }
 }
