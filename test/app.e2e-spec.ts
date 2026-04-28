@@ -34,34 +34,34 @@ describe('feature-flag-api (e2e)', () => {
       });
   });
 
-  it('/projects (GET) returns array', async () => {
-    const res = await request(app.getHttpServer()).get('/projects').expect(200);
+  it('/admin/projects (GET) returns array', async () => {
+    const res = await request(app.getHttpServer()).get('/admin/projects').expect(200);
     expect(Array.isArray(res.body)).toBe(true);
   });
 
-  it('/projects (POST) rejects invalid key', async () => {
+  it('/admin/projects (POST) rejects invalid key', async () => {
     await request(app.getHttpServer())
-      .post('/projects')
+      .post('/admin/projects')
       .send({ name: 'Bad', key: 'Invalid_Key' })
       .expect(400);
   });
 
-  it('/projects (POST) returns 409 on duplicate key', async () => {
+  it('/admin/projects (POST) returns 409 on duplicate key', async () => {
     const key = `dup-${Date.now()}`;
     await request(app.getHttpServer())
-      .post('/projects')
+      .post('/admin/projects')
       .send({ name: 'First', key })
       .expect(201);
     await request(app.getHttpServer())
-      .post('/projects')
+      .post('/admin/projects')
       .send({ name: 'Second', key })
       .expect(409);
   });
 
-  it('/projects (POST) creates then GET lists it', async () => {
+  it('/admin/projects (POST) creates then GET lists it', async () => {
     const key = `e2e-${Date.now()}`;
     const created = await request(app.getHttpServer())
-      .post('/projects')
+      .post('/admin/projects')
       .send({
         name: 'E2E project',
         key,
@@ -71,7 +71,7 @@ describe('feature-flag-api (e2e)', () => {
     expect(createdBody.key).toBe(key);
 
     const list = await request(app.getHttpServer())
-      .get('/projects')
+      .get('/admin/projects')
       .expect(200);
     const listBody = list.body as { key: string }[];
     const keys = listBody.map((p) => p.key);

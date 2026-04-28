@@ -6,7 +6,7 @@ import { CanActivate, Injectable } from '@nestjs/common';
  * When auth is ready, replace `canActivate` with real validation and apply on
  * {@link ProjectsController}: `@UseGuards(ProjectsAdminGuard)`.
  *
- * **Do not expose `POST /projects` publicly in production without this guard.**
+ * **Do not expose `POST /admin/projects` publicly in production without real auth in this guard.**
  */
 @Injectable()
 export class ProjectsAdminGuard implements CanActivate {

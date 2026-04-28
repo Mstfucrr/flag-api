@@ -4,7 +4,7 @@
 
 ## Temel yetenekler
 
-- Proje oluşturma, listeleme, silme
+- Proje oluşturma, listeleme, silme (admin: `GET|POST /admin/projects`, `DELETE /admin/projects/:projectKey`)
 - Bayrak oluşturma, güncelleme, silme
 - Sürüm geçmişi ve rollback
 - Runtime evaluate uçları (`/projects/:projectKey/flags/evaluate`)

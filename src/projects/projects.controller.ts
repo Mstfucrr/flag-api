@@ -8,6 +8,7 @@ import {
   HttpStatus,
   Param,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiCreatedResponse,
@@ -19,16 +20,16 @@ import {
 } from '@nestjs/swagger';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { ProjectResponseDto } from './dto/project-response.dto';
+import { ProjectsAdminGuard } from './guards/projects-admin.guard';
 import { ProjectsService } from './projects.service';
-
-// TODO: @UseGuards(JwtAuthGuard) — project routes are admin-only; wire when auth exists.
 
 /**
  * Admin API for managing client applications (projects).
  * Not used by the feature-flag SDK runtime.
  */
-@ApiTags('projects')
-@Controller('projects')
+@ApiTags('projects-admin')
+@Controller('admin/projects')
+@UseGuards(ProjectsAdminGuard)
 export class ProjectsController {
   constructor(private readonly projectsService: ProjectsService) {}
 

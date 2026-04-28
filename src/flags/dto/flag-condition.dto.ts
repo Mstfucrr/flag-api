@@ -29,14 +29,18 @@ export class FlagFilterRowDto {
 
   @ApiProperty({
     enum: OPERATOR_ENUM,
+    enumName: 'RuleOperator',
     example: 'eq',
+    description:
+      'Declarative comparison operator (aligned with @core-sdk/feature-flags-core).',
   })
   @IsString()
   @IsIn(OPERATOR_ENUM)
   operator!: RuleOperator;
 
   @ApiProperty({
-    description: 'Compared value (string, number, boolean, or JSON)',
+    description:
+      'Right-hand value: string, number, boolean, array, or JSON object. Meaning depends on `operator` (e.g. `in` / `notIn`: string array or list-shaped payload). For OpenAPI this field is untyped JSON.',
     example: 'admin',
   })
   @Allow()

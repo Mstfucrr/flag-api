@@ -3,7 +3,8 @@ import { IsArray, IsObject, IsOptional, IsString } from 'class-validator';
 
 export class EvaluateFlagsBodyDto {
   @ApiProperty({
-    type: [String],
+    type: String,
+    isArray: true,
     example: ['show_live_support_chat'],
     description: 'Flag keys to evaluate',
   })

@@ -11,18 +11,28 @@ import {
 import { FlagConditionRowDto } from './flag-condition.dto';
 
 export class UpdateFlagDto {
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    type: String,
+    maxLength: 2000,
+    description: 'Human-readable flag description',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(2000)
   description?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    type: Boolean,
+    description: 'Master enabled switch for the flag',
+  })
   @IsOptional()
   @IsBoolean()
   enabled?: boolean;
 
-  @ApiPropertyOptional({ type: [FlagConditionRowDto] })
+  @ApiPropertyOptional({
+    type: [FlagConditionRowDto],
+    description: 'OR-conditions; each condition’s filters are AND-combined',
+  })
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
