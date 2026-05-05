@@ -10,6 +10,7 @@ import {
   Patch,
   Post,
   Put,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBody,
@@ -23,8 +24,10 @@ import { CreateFlagDto } from './dto/create-flag.dto';
 import { SetFlagEnabledBodyDto } from './dto/set-flag-enabled-body.dto';
 import { UpdateFlagDto } from './dto/update-flag.dto';
 import { FlagsService } from './flags.service';
+import { FlagsApiKeyGuard } from './guards/flags-api-key.guard';
 
 @ApiTags('flags-admin')
+@UseGuards(FlagsApiKeyGuard)
 @Controller('admin/projects/:projectKey/flags')
 export class FlagsAdminController {
   constructor(private readonly flagsService: FlagsService) {}

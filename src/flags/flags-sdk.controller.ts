@@ -1,12 +1,22 @@
-import { Body, Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { EvaluateFlagsBodyDto } from './dto/evaluate-flags-body.dto';
 import { FlagsService } from './flags.service';
+import { FlagsApiKeyGuard } from './guards/flags-api-key.guard';
 
 /**
  * Project-scoped runtime flags API — used by `@core-sdk/feature-flags-sdk`.
  */
 @ApiTags('flags')
+@UseGuards(FlagsApiKeyGuard)
 @Controller('projects/:projectKey/flags')
 export class FlagsSdkController {
   constructor(private readonly flagsService: FlagsService) {}

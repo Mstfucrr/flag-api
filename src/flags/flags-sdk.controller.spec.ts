@@ -1,4 +1,6 @@
+import { ConfigModule } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
+import flagsConfig from '../config/flags.config';
 import { RequestLogService } from '../request-log/request-log.service';
 import { FeatureFlagRuntimeCacheService } from './cache/feature-flag-runtime-cache.service';
 import {
@@ -14,6 +16,12 @@ describe('FlagsSdkController', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
+      imports: [
+        ConfigModule.forRoot({
+          isGlobal: true,
+          load: [flagsConfig],
+        }),
+      ],
       controllers: [FlagsSdkController],
       providers: [
         FlagsService,
