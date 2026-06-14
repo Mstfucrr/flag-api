@@ -14,14 +14,22 @@ export function projectFlagsResourceId(projectKey: string): string {
  * eşitlik karşılaştırması tutarlı olur (`update` içinde `rulesChanged` için).
  */
 export function canonicalRulesJson(rules: FlagConditionRow[]): string {
-  const clone = structuredClone(rules);
-  clone.sort((a, b) => a.id.localeCompare(b.id));
-  for (const c of clone) {
-    c.filters = [...c.filters].sort((a, b) =>
-      (a.id ?? '').localeCompare(b.id ?? ''),
-    );
-  }
-  return JSON.stringify(clone);
+  return JSON.stringify(
+    [...rules]
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((condition) => ({
+        id: condition.id,
+        active: condition.active !== false,
+        filters: [...condition.filters]
+          .sort((a, b) => (a.id ?? '').localeCompare(b.id ?? ''))
+          .map((filter) => ({
+            id: filter.id,
+            field: filter.field,
+            operator: filter.operator,
+            value: filter.value,
+          })),
+      })),
+  );
 }
 
 function jsonEqual(a: unknown, b: unknown): boolean {
