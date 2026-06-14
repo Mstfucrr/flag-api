@@ -1,0 +1,2 @@
+overrides:
+  '@core-sdk/feature-flags-core': link:../../../feature-flag-workspace/core-sdk/packages/feature-flags-core

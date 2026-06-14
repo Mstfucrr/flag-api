@@ -6,7 +6,7 @@ import type { VersionEntryModel } from './models/version-entry.model';
 import type { FlagConditionRow } from './types/flag.types';
 import { FlagVersionEntity } from '../database/entities/flag-version.entity';
 
-/** Matches admin controller default when `x-principal-id` is missing; also backfills legacy rows. */
+/** Matches admin controller default when `x-principal-id` is missing. */
 function normalizeCreatedBy(createdBy: string | null | undefined): string {
   const t = createdBy?.trim();
   return t ? t : 'system';

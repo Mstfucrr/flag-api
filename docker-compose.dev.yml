@@ -1,0 +1,46 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: flag-api-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: flag_api
+      POSTGRES_USER: flag_api
+      POSTGRES_PASSWORD: flag_api
+    volumes:
+      - flag_api_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flag_api -d flag_api"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: flag-api-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - flag_api_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: flag-api-redisinsight
+    ports:
+      - "5540:5540"
+    volumes:
+      - flag_api_redisinsight_data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  flag_api_postgres_data:
+  flag_api_redis_data:
+  flag_api_redisinsight_data:

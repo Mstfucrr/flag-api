@@ -77,7 +77,7 @@ pnpm run test:cov    # coverage
 
 ## Bayrak `rules` modeli
 
-Her kural satırı bir **koşul** (`id`, `active`, `filters`). Koşullar değerlendirmede **VEYA**; aynı koşuldaki filtreler **VE**. Filtre: `field`, `operator`, `value`. Eski düz `{ id, field, operator, value, active }` kayıtları çekirdek pakette tek filtrelı koşula normalize edilir.
+Her kural satırı bir **koşul** (`id`, `active`, `filters`). Koşullar değerlendirmede **VEYA**; aynı koşuldaki filtreler **VE**. Filtre: `field`, `operator`, `value`. Sistem tek kural formatı kullanır.
 
 Çekirdek değerlendirme paketi: **`@core-sdk/feature-flags-core`** — bağımlılık `package.json` içinde tanımlıdır; `pnpm install` ile çözülür.
 
