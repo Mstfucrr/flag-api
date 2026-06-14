@@ -4,7 +4,6 @@ import type { FlagAggregate } from '../flags-persistence.repository';
 import { FlagsPersistenceRepository } from '../flags-persistence.repository';
 import { RedisCacheService } from '../../cache/redis-cache.service';
 import {
-  runtimeEvaluatePattern,
   runtimeFlagsKey,
   runtimeVersionKey,
 } from './feature-flag-runtime-cache.keys';
@@ -80,13 +79,8 @@ export class FeatureFlagRuntimeCacheService {
     }
   }
 
-  /** İsteğe bağlı evaluate önbelleğini temizler (şimdilik anahtar yazılmıyor). */
-  async invalidateEvaluationCache(projectKey: string): Promise<void> {
-    await this.redisCache.delByPattern(runtimeEvaluatePattern(projectKey));
-  }
-
   /**
-   * Admin yazma işleminden sonra: DB kaydı tamam → snapshot yenile → sürüm artır → evaluate deseni sil.
+   * Admin yazma işleminden sonra: DB kaydı tamam → snapshot yenile → sürüm artır.
    * Redis hatası üretimi bozmaz; sadece loglanır.
    */
   async refreshRuntimeCacheAfterMutation(projectKey: string): Promise<void> {
@@ -95,7 +89,6 @@ export class FeatureFlagRuntimeCacheService {
       const snap = await this.rebuildRuntimeSnapshot(pk);
       await this.setRuntimeSnapshot(pk, snap);
       await this.bumpRuntimeVersion(pk);
-      await this.invalidateEvaluationCache(pk);
     } catch (err: unknown) {
       this.logger.warn(
         `Runtime önbellek güncellenemedi (DB başarılı olabilir): project=${pk}`,
@@ -133,14 +126,13 @@ export class FeatureFlagRuntimeCacheService {
     try {
       await this.redisCache.del(runtimeFlagsKey(pk));
       await this.redisCache.del(runtimeVersionKey(pk));
-      await this.invalidateEvaluationCache(pk);
     } catch (err: unknown) {
       this.logger.warn(`Runtime anahtarları silinemedi: project=${pk}`, err);
     }
   }
 
   /**
-   * Elle iyileştirme: mutasyon sonrası ile aynı yenileme akışı (DB → Redis → sürüm + evaluate temizliği).
+   * Elle iyileştirme: mutasyon sonrası ile aynı yenileme akışı (DB → Redis → sürüm).
    */
   async refreshRuntimeCacheManual(projectKey: string): Promise<{
     ok: boolean;

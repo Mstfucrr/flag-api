@@ -55,7 +55,7 @@ Varsayılan HTTP portu **4000** (`PORT` ile değiştirilebilir). Swagger: `http:
 | `PORT` | Hayır | HTTP portu (varsayılan `4000`). |
 | `DATABASE_URL` veya `DB_*` | Evet (üretim) | PostgreSQL bağlantısı. |
 | `DB_SYNC` | Hayır | `true` iken şema entity’lerden senkron (yalnızca geliştirme). |
-| `REDIS_*`, `RUNTIME_EVAL_CACHE_ENABLED` | Hayır | Redis tabanlı runtime önbellek. |
+| `REDIS_*` | Hayır | Redis tabanlı runtime snapshot önbelleği. |
 | **`FLAGS_API_KEY`** | Hayır | **Doluysa** hem runtime hem admin bayrak uçları `Authorization: Bearer <değer>` bekler; zamanlama güvenli karşılaştırma kullanılır. **Boş bırakılırsa** kimlik doğrulama uygulanmaz (yerel geliştirme ile uyumlu). |
 
 Üretimde `FLAGS_API_KEY` tanımlayıp istemcide aynı değeri SDK `apiKey` veya `getHeaders` ile göndermeniz önerilir.

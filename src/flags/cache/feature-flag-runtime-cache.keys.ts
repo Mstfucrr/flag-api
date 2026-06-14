@@ -9,8 +9,3 @@ export function runtimeFlagsKey(projectKey: string): string {
 export function runtimeVersionKey(projectKey: string): string {
   return `ff:runtime:version:${projectKey.trim()}`;
 }
-
-/** İsteğe bağlı değerlendirme önbelleği — varsayılan kapalı; desen silme için. */
-export function runtimeEvaluatePattern(projectKey: string): string {
-  return `ff:runtime:evaluate:${projectKey.trim()}:*`;
-}
