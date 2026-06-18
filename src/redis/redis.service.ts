@@ -68,6 +68,19 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     return this.enabled && this.client?.isOpen === true;
   }
 
+  async ping(): Promise<boolean> {
+    if (!this.isReady()) {
+      return false;
+    }
+
+    try {
+      return (await this.client!.ping()) === 'PONG';
+    } catch (err: unknown) {
+      this.logger.warn('Redis health check failed', err);
+      return false;
+    }
+  }
+
   private key(raw: string): string {
     return `${this.keyPrefix}${raw}`;
   }

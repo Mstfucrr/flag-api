@@ -4,13 +4,13 @@ NestJS tabanlı **özellik bayrağı (feature flag)** HTTP servisi. Projeler ve 
 
 ## Özellikler
 
-| Alan | Açıklama |
-|------|----------|
-| **Projeler** | Admin: proje oluşturma, listeleme, silme (`/admin/projects`). |
-| **Runtime bayraklar** | SDK: liste, tekil okuma, toplu `POST …/flags/evaluate` ile karar. |
-| **Admin bayraklar** | Oluşturma, güncelleme, aç/kapa, silme, geçmiş, sürüm anlık görüntüsü, rollback. |
-| **Önbellek** | İsteğe bağlı Redis ile runtime değerlendirme anlık görüntüsü. |
-| **Gözlemlenebilirlik** | İstek günlüğü ve Swagger (`/docs`, `/docs/json`). |
+| Alan                   | Açıklama                                                                        |
+| ---------------------- | ------------------------------------------------------------------------------- |
+| **Projeler**           | Admin: proje oluşturma, listeleme, silme (`/admin/projects`).                   |
+| **Runtime bayraklar**  | SDK: liste, tekil okuma, toplu `POST …/flags/evaluate` ile karar.               |
+| **Admin bayraklar**    | Oluşturma, güncelleme, aç/kapa, silme, geçmiş, sürüm anlık görüntüsü, rollback. |
+| **Önbellek**           | İsteğe bağlı Redis ile runtime değerlendirme anlık görüntüsü.                   |
+| **Gözlemlenebilirlik** | İstek günlüğü ve Swagger (`/docs`, `/docs/json`).                               |
 
 ## Mimari özeti
 
@@ -44,19 +44,27 @@ pnpm run build
 pnpm run start:prod
 ```
 
-Varsayılan HTTP portu **4000** (`PORT` ile değiştirilebilir). Swagger: `http://localhost:4000/docs`.
+Varsayılan HTTP portu **3001** (`PORT` ile değiştirilebilir). Swagger: `http://localhost:3001/docs`.
+
+## Health check
+
+| Endpoint            | Amaç                         | Başarısızlık davranışı                                               |
+| ------------------- | ---------------------------- | -------------------------------------------------------------------- |
+| `GET /health/live`  | Proses liveness kontrolü     | Proses çalışıyorsa `200`                                             |
+| `GET /health/ready` | PostgreSQL ve Redis kontrolü | PostgreSQL kapalıysa `503`; opsiyonel Redis kapalıysa `200 degraded` |
+| `GET /health`       | Readiness ile aynı özet      | `/health/ready` ile aynı                                             |
 
 ## Ortam değişkenleri
 
 Örnek dosya: [`.env.example`](.env.example). Özet:
 
-| Değişken | Zorunlu | Açıklama |
-|----------|---------|----------|
-| `PORT` | Hayır | HTTP portu (varsayılan `4000`). |
-| `DATABASE_URL` veya `DB_*` | Evet (üretim) | PostgreSQL bağlantısı. |
-| `DB_SYNC` | Hayır | `true` iken şema entity’lerden senkron (yalnızca geliştirme). |
-| `REDIS_*` | Hayır | Redis tabanlı runtime snapshot önbelleği. |
-| **`FLAGS_API_KEY`** | Hayır | **Doluysa** hem runtime hem admin bayrak uçları `Authorization: Bearer <değer>` bekler; zamanlama güvenli karşılaştırma kullanılır. **Boş bırakılırsa** kimlik doğrulama uygulanmaz (yerel geliştirme ile uyumlu). |
+| Değişken                   | Zorunlu       | Açıklama                                                                                                                                                                                                           |
+| -------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `PORT`                     | Hayır         | HTTP portu (varsayılan `3001`).                                                                                                                                                                                    |
+| `DATABASE_URL` veya `DB_*` | Evet (üretim) | PostgreSQL bağlantısı.                                                                                                                                                                                             |
+| `DB_SYNC`                  | Hayır         | `true` iken şema entity’lerden senkron (yalnızca geliştirme).                                                                                                                                                      |
+| `REDIS_*`                  | Hayır         | Redis tabanlı runtime snapshot önbelleği.                                                                                                                                                                          |
+| **`FLAGS_API_KEY`**        | Hayır         | **Doluysa** hem runtime hem admin bayrak uçları `Authorization: Bearer <değer>` bekler; zamanlama güvenli karşılaştırma kullanılır. **Boş bırakılırsa** kimlik doğrulama uygulanmaz (yerel geliştirme ile uyumlu). |
 
 Üretimde `FLAGS_API_KEY` tanımlayıp istemcide aynı değeri SDK `apiKey` veya `getHeaders` ile göndermeniz önerilir.
 
@@ -83,12 +91,12 @@ Her kural satırı bir **koşul** (`id`, `active`, `filters`). Koşullar değerl
 
 ## SDK ile uç eşlemesi
 
-| SDK / istemci | HTTP |
-|---------------|------|
-| `bootstrap`, liste | `GET /projects/:projectKey/flags` |
-| `isEnabled`, `prefetch…` | `POST /projects/:projectKey/flags/evaluate` |
-| `getHistory` | `GET /admin/projects/:projectKey/flags/:flagKey/history` |
-| `getVersionDetail` | `GET /admin/projects/:projectKey/flags/:flagKey/versions/:version` |
+| SDK / istemci            | HTTP                                                               |
+| ------------------------ | ------------------------------------------------------------------ |
+| `bootstrap`, liste       | `GET /projects/:projectKey/flags`                                  |
+| `isEnabled`, `prefetch…` | `POST /projects/:projectKey/flags/evaluate`                        |
+| `getHistory`             | `GET /admin/projects/:projectKey/flags/:flagKey/history`           |
+| `getVersionDetail`       | `GET /admin/projects/:projectKey/flags/:flagKey/versions/:version` |
 
 ## Lisans
 

@@ -36,7 +36,7 @@ async function bootstrap() {
     jsonDocumentUrl: 'docs/json',
   });
 
-  const port = process.env.PORT ?? 4000;
+  const port = process.env.PORT ?? 3001;
   await app.listen(port);
   logger.log(`HTTP server listening on port ${port} (Swagger: /docs)`);
 }
