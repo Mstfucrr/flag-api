@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { AuditInterceptor } from './common/logging/audit.interceptor';
 import databaseConfig from './config/database.config';
 import flagsConfig from './config/flags.config';
 import redisConfig from './config/redis.config';
@@ -23,6 +25,12 @@ import { ThrottlingModule } from './throttling/throttling.module';
     FlagsModule,
     HealthModule,
     ProjectsModule,
+  ],
+  providers: [
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AuditInterceptor,
+    },
   ],
 })
 export class AppModule {}

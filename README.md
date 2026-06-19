@@ -11,7 +11,7 @@ NestJS tabanlı **özellik bayrağı (feature flag)** HTTP servisi. Projeler ve 
 | **Admin bayraklar**    | Oluşturma, güncelleme, aç/kapa, silme, geçmiş, sürüm anlık görüntüsü, rollback. |
 | **Önbellek**           | İsteğe bağlı Redis ile runtime değerlendirme anlık görüntüsü.                   |
 | **Trafik koruması**    | `@nestjs/throttler` ile controller bazlı HTTP rate limit.                       |
-| **Gözlemlenebilirlik** | İstek günlüğü ve Swagger (`/docs`, `/docs/json`).                               |
+| **Gözlemlenebilirlik** | NestJS Logger, JSON audit stdout, opsiyonel Instana ve Swagger.                 |
 
 ## Mimari özeti
 
@@ -63,11 +63,20 @@ Varsayılan HTTP portu **3001** (`PORT` ile değiştirilebilir). Swagger: `http:
 | `REDIS_*`                  | Hayır         | Redis tabanlı runtime snapshot önbelleği.                                                                                                                                                                          |
 | `THROTTLER_TTL`            | Hayır         | Genel HTTP rate limit penceresi (ms); varsayılan `60000`.                                                                                                                                                          |
 | `THROTTLER_LIMIT`          | Hayır         | Genel HTTP istek limiti; varsayılan `1000`. Admin controller'ları `300/60000 ms` kullanır.                                                                                                                         |
+| `LOG_LEVEL`                | Hayır         | Virgülle ayrılmış NestJS log seviyeleri; ör. `error,warn,log`.                                                                                                                                                     |
+| `ENABLE_METRICS`           | Hayır         | `TRUE` olduğunda Instana collector başlatılır.                                                                                                                                                                     |
+| `INSTANA_*`                | Hayır         | Instana host, port, level ve servis adı ayarları.                                                                                                                                                                  |
 | **`FLAGS_API_KEY`**        | Hayır         | **Doluysa** hem runtime hem admin bayrak uçları `Authorization: Bearer <değer>` bekler; zamanlama güvenli karşılaştırma kullanılır. **Boş bırakılırsa** kimlik doğrulama uygulanmaz (yerel geliştirme ile uyumlu). |
 
 Üretimde `FLAGS_API_KEY` tanımlayıp istemcide aynı değeri SDK `apiKey` veya `getHeaders` ile göndermeniz önerilir.
 
 Rate limit aşıldığında `429` ve `{ "error": "RATE_LIMIT_EXCEEDED", "message": "..." }` döner. Geçerli JWT Bearer içindeki `sub` kullanıcı tracker'ı olarak kullanılır; aksi halde istemci IP'si kullanılır. Genel HTTP limiter in-memory ve API instance'ı bazlıdır; iş cooldown'ları gerektiğinde ayrıca Redis TTL ile uygulanır.
+
+## Loglama ve observability
+
+- Operasyonel loglar NestJS `Logger` ile yazılır; token, parola, OTP, request body ve tam PII loglanmaz.
+- Seçili kritik HTTP istekleri ve başarılı kritik mutasyonlar tek satır `audit: true` JSON stdout kaydı üretir.
+- Instana yalnızca `ENABLE_METRICS=TRUE` iken trace/metrik için başlatılır; uygulama loglarının yerine geçmez.
 
 ## Kimlik doğrulama (`FLAGS_API_KEY`)
 

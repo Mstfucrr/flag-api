@@ -1,11 +1,45 @@
-import { Logger, ValidationPipe } from '@nestjs/common';
+if (process.env.ENABLE_METRICS === 'TRUE') {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const initInstana = require('@instana/collector') as (
+    config: Record<string, unknown>,
+  ) => unknown;
+  initInstana({
+    agentHost: process.env.INSTANA_HOST,
+    agentPort: Number(process.env.INSTANA_PORT),
+    level: process.env.INSTANA_LEVEL,
+    serviceName: process.env.INSTANA_SERVICE_NAME,
+  });
+}
+
+import { Logger, LogLevel, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 
+const VALID_LOG_LEVELS = new Set<LogLevel>([
+  'fatal',
+  'error',
+  'warn',
+  'log',
+  'debug',
+  'verbose',
+]);
+
+function configuredLogLevels(): LogLevel[] | undefined {
+  const levels = (process.env.LOG_LEVEL ?? '')
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter((value): value is LogLevel =>
+      VALID_LOG_LEVELS.has(value as LogLevel),
+    );
+  return levels.length > 0 ? levels : undefined;
+}
+
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    logger: configuredLogLevels(),
+  });
   app.enableCors({
     origin: true,
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],

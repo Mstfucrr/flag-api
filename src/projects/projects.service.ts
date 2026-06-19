@@ -7,6 +7,7 @@ import {
   mapProjectToResponse,
 } from './dto/project-response.dto';
 import { ProjectsRepository } from './projects.repository';
+import { writeAuditLog } from '../common/logging/audit.log';
 
 @Injectable()
 export class ProjectsService {
@@ -33,6 +34,13 @@ export class ProjectsService {
       principalId,
       action: 'create-project',
       request: { key: entity.key, name: entity.name },
+    });
+    writeAuditLog({
+      event_action: 'resource.created',
+      event_category: 'configuration',
+      event_outcome: 'success',
+      resource_id: entity.key,
+      user_id: principalId,
     });
     return mapProjectToResponse(entity);
   }
@@ -63,6 +71,13 @@ export class ProjectsService {
       principalId,
       action: 'delete-project',
       request: { key: k, removedFlagKeys },
+    });
+    writeAuditLog({
+      event_action: 'resource.deleted',
+      event_category: 'configuration',
+      event_outcome: 'success',
+      resource_id: k,
+      user_id: principalId,
     });
   }
 }

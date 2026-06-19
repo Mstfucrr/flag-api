@@ -23,6 +23,7 @@ import {
   projectFlagsResourceId,
 } from './flags.service.utils';
 import { FeatureFlagRuntimeCacheService } from './cache/feature-flag-runtime-cache.service';
+import { writeAuditLog } from '../common/logging/audit.log';
 
 /**
  * Feature flag yaşam döngüsü: oluşturma, okuma, güncelleme, silme, versiyon geçmişi,
@@ -77,9 +78,7 @@ export class FlagsService {
     };
     await this.flags.insert(aggregate);
     await this.runtimeCache.refreshRuntimeCacheAfterMutation(projectKey);
-    this.logger.log(
-      `Flag created: project=${projectKey} key=${key} v=1 principal=${principalId}`,
-    );
+    this.logger.log(`Flag created: project=${projectKey} key=${key} v=1`);
     await this.requestLog.append({
       resourceId: projectFlagsResourceId(projectKey),
       principalId,
@@ -91,6 +90,13 @@ export class FlagsService {
         enabled: aggregate.enabled,
         rules: aggregate.rules,
       },
+    });
+    writeAuditLog({
+      event_action: 'resource.created',
+      event_category: 'configuration',
+      event_outcome: 'success',
+      resource_id: `${projectKey}:${key}`,
+      user_id: principalId,
     });
     return this.toAdminCurrent(aggregate);
   }
@@ -218,6 +224,13 @@ export class FlagsService {
       },
     });
     await this.runtimeCache.refreshRuntimeCacheAfterMutation(pk);
+    writeAuditLog({
+      event_action: 'resource.updated',
+      event_category: 'configuration',
+      event_outcome: 'success',
+      resource_id: `${pk}:${fk}`,
+      user_id: principalId,
+    });
     return this.toAdminCurrent(refreshed);
   }
 
@@ -278,6 +291,13 @@ export class FlagsService {
         },
       });
       await this.runtimeCache.refreshRuntimeCacheAfterMutation(pk);
+      writeAuditLog({
+        event_action: 'resource.updated',
+        event_category: 'configuration',
+        event_outcome: 'success',
+        resource_id: `${pk}:${routeKey}`,
+        user_id: principalId,
+      });
       return this.toAdminCurrent(refreshed);
     }
 
@@ -312,7 +332,7 @@ export class FlagsService {
     });
     await this.flags.updateByLookup(next, routeKey);
     this.logger.log(
-      `Flag updated: project=${pk} key=${next.key} v=${next.currentVersion} principal=${principalId}`,
+      `Flag updated: project=${pk} key=${next.key} v=${next.currentVersion}`,
     );
     const beforeSnap = {
       description: agg.description,
@@ -342,6 +362,13 @@ export class FlagsService {
       },
     });
     await this.runtimeCache.refreshRuntimeCacheAfterMutation(pk);
+    writeAuditLog({
+      event_action: 'resource.updated',
+      event_category: 'configuration',
+      event_outcome: 'success',
+      resource_id: `${pk}:${next.key}`,
+      user_id: principalId,
+    });
     return this.toAdminCurrent(next);
   }
 
@@ -392,6 +419,13 @@ export class FlagsService {
       action: 'delete-flag',
       request: { flagKey: fk },
     });
+    writeAuditLog({
+      event_action: 'resource.deleted',
+      event_category: 'configuration',
+      event_outcome: 'success',
+      resource_id: `${pk}:${fk}`,
+      user_id: principalId,
+    });
   }
 
   /**
@@ -440,7 +474,7 @@ export class FlagsService {
     });
     await this.flags.updateByLookup(merged, routeKey);
     this.logger.log(
-      `Flag rollback: project=${pk} key=${merged.key} restoredFrom=v${targetVersion} newVersion=v${merged.currentVersion} principal=${principalId}`,
+      `Flag rollback: project=${pk} key=${merged.key} restoredFrom=v${targetVersion} newVersion=v${merged.currentVersion}`,
     );
     await this.requestLog.append({
       resourceId: projectFlagsResourceId(pk),
@@ -453,6 +487,13 @@ export class FlagsService {
       },
     });
     await this.runtimeCache.refreshRuntimeCacheAfterMutation(pk);
+    writeAuditLog({
+      event_action: 'resource.rollback',
+      event_category: 'configuration',
+      event_outcome: 'success',
+      resource_id: `${pk}:${merged.key}`,
+      user_id: principalId,
+    });
     return this.toAdminCurrent(merged);
   }
 
