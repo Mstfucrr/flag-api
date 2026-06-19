@@ -1,10 +1,23 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBody, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { QueryRequestLogsDto } from './dto/query-request-logs.dto';
 import { RequestLogService } from './request-log.service';
+import { FiyuuThrottlerGuard } from '../throttling/fiyuu-throttler.guard';
+import { ApiRateLimitExceeded } from '../throttling/throttling.swagger';
 
 @ApiTags('request-logs')
+@ApiRateLimitExceeded()
+@Throttle({ default: { limit: 300, ttl: 60_000 } })
 @Controller('admin/request-logs')
+@UseGuards(FiyuuThrottlerGuard)
 export class RequestLogController {
   constructor(private readonly requestLogService: RequestLogService) {}
 

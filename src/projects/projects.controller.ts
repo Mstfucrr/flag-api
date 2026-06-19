@@ -18,18 +18,23 @@ import {
   ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { ProjectResponseDto } from './dto/project-response.dto';
 import { ProjectsAdminGuard } from './guards/projects-admin.guard';
 import { ProjectsService } from './projects.service';
+import { FiyuuThrottlerGuard } from '../throttling/fiyuu-throttler.guard';
+import { ApiRateLimitExceeded } from '../throttling/throttling.swagger';
 
 /**
  * Admin API for managing client applications (projects).
  * Not used by the feature-flag SDK runtime.
  */
 @ApiTags('projects-admin')
+@ApiRateLimitExceeded()
+@Throttle({ default: { limit: 300, ttl: 60_000 } })
 @Controller('admin/projects')
-@UseGuards(ProjectsAdminGuard)
+@UseGuards(ProjectsAdminGuard, FiyuuThrottlerGuard)
 export class ProjectsController {
   constructor(private readonly projectsService: ProjectsService) {}
 

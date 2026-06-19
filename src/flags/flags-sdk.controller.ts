@@ -11,12 +11,15 @@ import { ApiBody, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { EvaluateFlagsBodyDto } from './dto/evaluate-flags-body.dto';
 import { FlagsService } from './flags.service';
 import { FlagsApiKeyGuard } from './guards/flags-api-key.guard';
+import { FiyuuThrottlerGuard } from '../throttling/fiyuu-throttler.guard';
+import { ApiRateLimitExceeded } from '../throttling/throttling.swagger';
 
 /**
  * Project-scoped runtime flags API — used by `@core-sdk/feature-flags-sdk`.
  */
 @ApiTags('flags')
-@UseGuards(FlagsApiKeyGuard)
+@ApiRateLimitExceeded()
+@UseGuards(FlagsApiKeyGuard, FiyuuThrottlerGuard)
 @Controller('projects/:projectKey/flags')
 export class FlagsSdkController {
   constructor(private readonly flagsService: FlagsService) {}

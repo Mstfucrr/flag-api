@@ -10,9 +10,10 @@ interface DependencyCheck {
   latencyMs?: number;
 }
 
-export interface ReadinessResult {
+export interface HealthResult {
   status: 'ok' | 'degraded' | 'error';
   timestamp: string;
+  uptimeSeconds: number;
   checks: {
     database: DependencyCheck;
     redis: DependencyCheck;
@@ -29,15 +30,7 @@ export class HealthService {
     private readonly config: ConfigService,
   ) {}
 
-  liveness() {
-    return {
-      status: 'ok' as const,
-      timestamp: new Date().toISOString(),
-      uptimeSeconds: Math.floor(process.uptime()),
-    };
-  }
-
-  async readiness(): Promise<ReadinessResult> {
+  async check(): Promise<HealthResult> {
     const [database, redis] = await Promise.all([
       this.checkDatabase(),
       this.checkRedis(),
@@ -52,7 +45,10 @@ export class HealthService {
 
     return {
       status,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date().toLocaleString('tr-TR', {
+        timeZone: 'Europe/Istanbul',
+      }),
+      uptimeSeconds: Math.floor(process.uptime()),
       checks: { database, redis },
     };
   }
@@ -76,12 +72,14 @@ export class HealthService {
     check: () => Promise<boolean>,
   ): Promise<DependencyCheck> {
     const startedAt = performance.now();
+    let timeout: ReturnType<typeof setTimeout> | undefined;
 
     try {
       const healthy = await Promise.race([
         check(),
-        new Promise<boolean>((resolve) =>
-          setTimeout(() => resolve(false), CHECK_TIMEOUT_MS),
+        new Promise<boolean>(
+          (resolve) =>
+            (timeout = setTimeout(() => resolve(false), CHECK_TIMEOUT_MS)),
         ),
       ]);
 
@@ -94,6 +92,10 @@ export class HealthService {
         status: 'down',
         latencyMs: Math.round(performance.now() - startedAt),
       };
+    } finally {
+      if (timeout !== undefined) {
+        clearTimeout(timeout);
+      }
     }
   }
 }

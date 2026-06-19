@@ -19,15 +19,20 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { CreateFlagBodyDto } from './dto/create-flag-body.dto';
 import { CreateFlagDto } from './dto/create-flag.dto';
 import { SetFlagEnabledBodyDto } from './dto/set-flag-enabled-body.dto';
 import { UpdateFlagDto } from './dto/update-flag.dto';
 import { FlagsService } from './flags.service';
 import { FlagsApiKeyGuard } from './guards/flags-api-key.guard';
+import { FiyuuThrottlerGuard } from '../throttling/fiyuu-throttler.guard';
+import { ApiRateLimitExceeded } from '../throttling/throttling.swagger';
 
 @ApiTags('flags-admin')
-@UseGuards(FlagsApiKeyGuard)
+@ApiRateLimitExceeded()
+@Throttle({ default: { limit: 300, ttl: 60_000 } })
+@UseGuards(FlagsApiKeyGuard, FiyuuThrottlerGuard)
 @Controller('admin/projects/:projectKey/flags')
 export class FlagsAdminController {
   constructor(private readonly flagsService: FlagsService) {}

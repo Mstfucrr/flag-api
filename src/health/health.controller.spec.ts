@@ -6,8 +6,7 @@ import { HealthService } from './health.service';
 describe('HealthController', () => {
   let controller: HealthController;
   const health = {
-    liveness: jest.fn(),
-    readiness: jest.fn(),
+    check: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -24,14 +23,7 @@ describe('HealthController', () => {
     expect(controller).toBeDefined();
   });
 
-  it('returns liveness without checking dependencies', () => {
-    health.liveness.mockReturnValue({ status: 'ok' });
-
-    expect(controller.live()).toEqual({ status: 'ok' });
-    expect(health.readiness).not.toHaveBeenCalled();
-  });
-
-  it('returns degraded readiness when only Redis is down', async () => {
+  it('returns degraded status when only Redis is down', async () => {
     const result = {
       status: 'degraded',
       timestamp: new Date().toISOString(),
@@ -40,13 +32,13 @@ describe('HealthController', () => {
         redis: { status: 'down' },
       },
     };
-    health.readiness.mockResolvedValue(result);
+    health.check.mockResolvedValue(result);
 
-    await expect(controller.ready()).resolves.toEqual(result);
+    await expect(controller.check()).resolves.toEqual(result);
   });
 
   it('returns 503 when PostgreSQL is down', async () => {
-    health.readiness.mockResolvedValue({
+    health.check.mockResolvedValue({
       status: 'error',
       timestamp: new Date().toISOString(),
       checks: {
@@ -55,6 +47,6 @@ describe('HealthController', () => {
       },
     });
 
-    await expect(controller.ready()).rejects.toBeInstanceOf(HttpException);
+    await expect(controller.check()).rejects.toBeInstanceOf(HttpException);
   });
 });

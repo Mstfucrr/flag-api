@@ -10,12 +10,13 @@ import {
 import { FlagsSdkController } from './flags-sdk.controller';
 import { FlagsService } from './flags.service';
 import { MemoryFlagsPersistence } from './memory-flags-persistence';
+import { FiyuuThrottlerGuard } from '../throttling/fiyuu-throttler.guard';
 
 describe('FlagsSdkController', () => {
   let controller: FlagsSdkController;
 
   beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
+    const moduleBuilder = Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({
           isGlobal: true,
@@ -53,7 +54,11 @@ describe('FlagsSdkController', () => {
           inject: [FLAGS_PERSISTENCE],
         },
       ],
-    }).compile();
+    });
+    const module: TestingModule = await moduleBuilder
+      .overrideGuard(FiyuuThrottlerGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .compile();
 
     controller = module.get<FlagsSdkController>(FlagsSdkController);
   });

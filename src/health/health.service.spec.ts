@@ -23,7 +23,7 @@ describe('HealthService', () => {
     config.get.mockReturnValue(true);
     redis.ping.mockResolvedValue(true);
 
-    const result = await service.readiness();
+    const result = await service.check();
 
     expect(result.status).toBe('ok');
     expect(result.checks.database.status).toBe('up');
@@ -35,7 +35,7 @@ describe('HealthService', () => {
     config.get.mockReturnValue(true);
     redis.ping.mockResolvedValue(false);
 
-    const result = await service.readiness();
+    const result = await service.check();
 
     expect(result.status).toBe('degraded');
     expect(result.checks.database.status).toBe('up');
@@ -46,7 +46,7 @@ describe('HealthService', () => {
     dataSource.query.mockResolvedValue([{ '?column?': 1 }]);
     config.get.mockReturnValue(false);
 
-    const result = await service.readiness();
+    const result = await service.check();
 
     expect(result.status).toBe('ok');
     expect(result.checks.redis.status).toBe('disabled');
@@ -57,7 +57,7 @@ describe('HealthService', () => {
     dataSource.query.mockRejectedValue(new Error('connection failed'));
     config.get.mockReturnValue(false);
 
-    const result = await service.readiness();
+    const result = await service.check();
 
     expect(result.status).toBe('error');
     expect(result.checks.database.status).toBe('down');

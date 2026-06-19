@@ -10,6 +10,7 @@ NestJS tabanlı **özellik bayrağı (feature flag)** HTTP servisi. Projeler ve 
 | **Runtime bayraklar**  | SDK: liste, tekil okuma, toplu `POST …/flags/evaluate` ile karar.               |
 | **Admin bayraklar**    | Oluşturma, güncelleme, aç/kapa, silme, geçmiş, sürüm anlık görüntüsü, rollback. |
 | **Önbellek**           | İsteğe bağlı Redis ile runtime değerlendirme anlık görüntüsü.                   |
+| **Trafik koruması**    | `@nestjs/throttler` ile controller bazlı HTTP rate limit.                       |
 | **Gözlemlenebilirlik** | İstek günlüğü ve Swagger (`/docs`, `/docs/json`).                               |
 
 ## Mimari özeti
@@ -48,11 +49,7 @@ Varsayılan HTTP portu **3001** (`PORT` ile değiştirilebilir). Swagger: `http:
 
 ## Health check
 
-| Endpoint            | Amaç                         | Başarısızlık davranışı                                               |
-| ------------------- | ---------------------------- | -------------------------------------------------------------------- |
-| `GET /health/live`  | Proses liveness kontrolü     | Proses çalışıyorsa `200`                                             |
-| `GET /health/ready` | PostgreSQL ve Redis kontrolü | PostgreSQL kapalıysa `503`; opsiyonel Redis kapalıysa `200 degraded` |
-| `GET /health`       | Readiness ile aynı özet      | `/health/ready` ile aynı                                             |
+`GET /health`, servis uptime bilgisini ve PostgreSQL/Redis durumunu döner. PostgreSQL kapalıysa `503`; opsiyonel Redis kapalıysa DB fallback devam ettiği için `200 degraded` döner.
 
 ## Ortam değişkenleri
 
@@ -64,9 +61,13 @@ Varsayılan HTTP portu **3001** (`PORT` ile değiştirilebilir). Swagger: `http:
 | `DATABASE_URL` veya `DB_*` | Evet (üretim) | PostgreSQL bağlantısı.                                                                                                                                                                                             |
 | `DB_SYNC`                  | Hayır         | `true` iken şema entity’lerden senkron (yalnızca geliştirme).                                                                                                                                                      |
 | `REDIS_*`                  | Hayır         | Redis tabanlı runtime snapshot önbelleği.                                                                                                                                                                          |
+| `THROTTLER_TTL`            | Hayır         | Genel HTTP rate limit penceresi (ms); varsayılan `60000`.                                                                                                                                                          |
+| `THROTTLER_LIMIT`          | Hayır         | Genel HTTP istek limiti; varsayılan `1000`. Admin controller'ları `300/60000 ms` kullanır.                                                                                                                         |
 | **`FLAGS_API_KEY`**        | Hayır         | **Doluysa** hem runtime hem admin bayrak uçları `Authorization: Bearer <değer>` bekler; zamanlama güvenli karşılaştırma kullanılır. **Boş bırakılırsa** kimlik doğrulama uygulanmaz (yerel geliştirme ile uyumlu). |
 
 Üretimde `FLAGS_API_KEY` tanımlayıp istemcide aynı değeri SDK `apiKey` veya `getHeaders` ile göndermeniz önerilir.
+
+Rate limit aşıldığında `429` ve `{ "error": "RATE_LIMIT_EXCEEDED", "message": "..." }` döner. Geçerli JWT Bearer içindeki `sub` kullanıcı tracker'ı olarak kullanılır; aksi halde istemci IP'si kullanılır. Genel HTTP limiter in-memory ve API instance'ı bazlıdır; iş cooldown'ları gerektiğinde ayrıca Redis TTL ile uygulanır.
 
 ## Kimlik doğrulama (`FLAGS_API_KEY`)
 
