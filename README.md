@@ -66,9 +66,9 @@ Varsayılan HTTP portu **3001** (`PORT` ile değiştirilebilir). Swagger: `http:
 | `LOG_LEVEL`                | Hayır         | Virgülle ayrılmış NestJS log seviyeleri; ör. `error,warn,log`.                                                                                                                                                     |
 | `ENABLE_METRICS`           | Hayır         | `TRUE` olduğunda Instana collector başlatılır.                                                                                                                                                                     |
 | `INSTANA_*`                | Hayır         | Instana host, port, level ve servis adı ayarları.                                                                                                                                                                  |
-| **`FLAGS_API_KEY`**        | Hayır         | **Doluysa** hem runtime hem admin bayrak uçları `Authorization: Bearer <değer>` bekler; zamanlama güvenli karşılaştırma kullanılır. **Boş bırakılırsa** kimlik doğrulama uygulanmaz (yerel geliştirme ile uyumlu). |
+| **`FLAGS_API_KEY`**        | Hayır         | **Doluysa** runtime ve admin flag endpoint'leri `Authorization: Bearer <değer>` bekler; timing-safe karşılaştırma kullanılır. **Boş bırakılırsa** bu endpoint'lerde kimlik doğrulama uygulanmaz. |
 
-Üretimde `FLAGS_API_KEY` tanımlayıp istemcide aynı değeri SDK `apiKey` veya `getHeaders` ile göndermeniz önerilir.
+Üretimde `FLAGS_API_KEY` tanımlayıp runtime client'ta aynı değeri SDK `apiKey` veya `getHeaders` ile göndermeniz önerilir.
 
 Rate limit aşıldığında `429` ve `{ "error": "RATE_LIMIT_EXCEEDED", "message": "..." }` döner. Geçerli JWT Bearer içindeki `sub` kullanıcı tracker'ı olarak kullanılır; aksi halde istemci IP'si kullanılır. Genel HTTP limiter in-memory ve API instance'ı bazlıdır; iş cooldown'ları gerektiğinde ayrıca Redis TTL ile uygulanır.
 
@@ -83,7 +83,7 @@ Rate limit aşıldığında `429` ve `{ "error": "RATE_LIMIT_EXCEEDED", "message
 - Guard: `FlagsApiKeyGuard` — `FlagsSdkController` ve `FlagsAdminController` üzerinde.
 - İstemci: `@core-sdk/feature-flags-sdk` içinde `apiKey` doluysa `Authorization: Bearer` otomatik eklenir; boşsa başlık gönderilmez (`getHeaders` ile özelleştirilebilir).
 
-> **Not:** `ProjectsController` için ayrı `ProjectsAdminGuard` şu an yer tutucudur; prod’da admin proje uçlarını da gerçek auth ile korumayı unutmayın.
+> **Not:** `ProjectsController` içindeki `ProjectsAdminGuard` şu an yer tutucudur. `RequestLogController` üzerinde de API key guard bulunmaz. Bu endpoint'ler production entegrasyonunda ayrıca korunmalıdır.
 
 ## Testler
 
