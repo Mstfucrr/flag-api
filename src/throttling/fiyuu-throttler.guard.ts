@@ -35,7 +35,27 @@ function jwtSubject(authorization: unknown): string | null {
   }
 }
 
+function projectKeyParam(request: Request): string | null {
+  const raw = request.params?.projectKey;
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return typeof value === 'string' && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
+/**
+ * Proje-bazlı izolasyon: `:projectKey` route param'ı varsa kova tamamen o
+ * projeye özeldir (IP/kullanıcı ayrımı yapılmaz) — böylece bir projenin
+ * trafiği başka bir projenin kotasını etkilemez, ve çok-pod'lu bir servis
+ * farklı IP'lerden çağırarak kotayı pod sayısı kadar çoğaltamaz. `:projectKey`
+ * olmayan (proje bağlamı olmayan) route'larda eski davranış (kullanıcı/IP) geçerli.
+ */
 export function resolveThrottlerTracker(request: Request): string {
+  const projectKey = projectKeyParam(request);
+  if (projectKey) {
+    return `project:${projectKey}`;
+  }
+
   const subject = jwtSubject(request.headers.authorization);
   if (subject) {
     return `user:${subject}`;

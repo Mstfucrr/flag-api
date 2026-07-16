@@ -68,6 +68,35 @@ describe('FiyuuThrottlerGuard', () => {
     );
   });
 
+  it('isolates by projectKey when the route is project-scoped, ignoring IP/user', () => {
+    const token = `${base64Url({ alg: 'none' })}.${base64Url({
+      sub: 'user-42',
+    })}.signature`;
+
+    expect(
+      resolveThrottlerTracker(
+        request({ params: { projectKey: 'acme' } } as Partial<Request>),
+      ),
+    ).toBe('project:acme');
+
+    // Same project, different IP/user → same bucket (no cross-pod quota multiplication).
+    expect(
+      resolveThrottlerTracker(
+        request({
+          params: { projectKey: 'acme' },
+          headers: { authorization: `Bearer ${token}` },
+        } as Partial<Request>),
+      ),
+    ).toBe('project:acme');
+
+    // Different project → different bucket.
+    expect(
+      resolveThrottlerTracker(
+        request({ params: { projectKey: 'globex' } } as Partial<Request>),
+      ),
+    ).toBe('project:globex');
+  });
+
   it('treats non-JWT bearer tokens as public IP traffic', () => {
     expect(
       resolveThrottlerTracker(
