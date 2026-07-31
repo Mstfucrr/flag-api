@@ -1,0 +1,5 @@
+# Validate branch name before push
+sh "$(dirname "$0")/validate-branch.sh"
+
+pnpm exec jest --config jest.config.js --bail
+pnpm exec jest --config jest-e2e.config.js --bail

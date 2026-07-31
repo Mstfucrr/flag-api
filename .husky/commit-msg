@@ -1,0 +1,79 @@
+#!/usr/bin/env sh
+
+COMMIT_MSG_FILE=$1
+COMMIT_MSG=$(head -n 1 "$COMMIT_MSG_FILE")
+
+case "$COMMIT_MSG" in
+  Merge\ *)
+    exit 0
+    ;;
+esac
+
+COMMIT_MSG_PATTERN='^(feat|fix|refactor|docs|chore)(\([a-z]+\))?: [a-z].*$'
+
+reject_commit_msg() {
+  echo ""
+  echo "────────────────────────────────────────────────────────"
+  echo " Commit message rejected"
+  echo "────────────────────────────────────────────────────────"
+  echo ""
+  echo " Format:  <type>(<scope>): <subject>"
+  echo "          <type>: <subject>"
+  echo ""
+  echo " Types:   feat | fix | refactor | docs | chore"
+  echo ""
+  echo " Rules:"
+  echo "   • type is required and must be lowercase"
+  echo "   • scope is optional, lowercase, single word: (auth)"
+  echo "   • subject starts with a lowercase letter"
+  echo "   • use imperative mood (\"add\", not \"added\")"
+  echo "   • no trailing period"
+  echo "   • subject max 72 characters (aim for 50 or less)"
+  echo "   • no Turkish characters (c, g, i, o, s, u instead)"
+  echo ""
+  echo " Valid examples:"
+  echo "   feat(location): dedupe heartbeat/stationary events"
+  echo "   fix: correct refund amount calculation"
+  echo ""
+  echo " Invalid examples:"
+  echo "   Feat(Location): Added new dedupe."
+  echo "   fix: bug"
+  echo ""
+  echo " Your message:"
+  echo "   ${COMMIT_MSG}"
+  echo ""
+  if [ -n "$1" ]; then
+    echo " Reason:"
+    echo "   $1"
+    echo ""
+  fi
+  echo "────────────────────────────────────────────────────────"
+  exit 1
+}
+
+if ! printf '%s\n' "$COMMIT_MSG" | grep -Eq "$COMMIT_MSG_PATTERN"; then
+  reject_commit_msg "does not match conventional commits format"
+fi
+
+SUBJECT=$(printf '%s\n' "$COMMIT_MSG" | sed -E 's/^(feat|fix|refactor|docs|chore)(\([a-z]+\))?: //')
+
+if [ ${#SUBJECT} -gt 72 ]; then
+  reject_commit_msg "subject is ${#SUBJECT} characters (max 72)"
+fi
+
+case "$SUBJECT" in
+  *.)
+    reject_commit_msg "subject must not end with a period"
+    ;;
+esac
+
+if printf '%s\n' "$COMMIT_MSG" | grep -Eq '[çğıöşüÇĞİÖŞÜ]'; then
+  reject_commit_msg "Turkish characters are not allowed"
+fi
+
+# Reject vague one-word subjects like "bug", "fix", "update"
+case "$SUBJECT" in
+  bug|fix|update|changes|wip|test|misc|stuff)
+    reject_commit_msg "subject is too vague; describe what changed"
+    ;;
+esac

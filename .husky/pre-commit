@@ -1,0 +1,44 @@
+# Validate branch name
+sh "$(dirname "$0")/validate-branch.sh"
+
+# Lint + Prettier on staged files (via lint-staged)
+pnpm exec lint-staged
+
+# Run related tests only when relevant files are staged
+# Use `pnpm exec jest` (not `pnpm test --`) so flags are not swallowed as an extra `--`
+# || true: grep exits 1 when no match; husky runs with sh -e
+
+STAGED_SOURCE_FILES=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null | grep -E '\.ts$' | grep -v '\.spec\.' | grep -v '\.e2e-spec\.' | tr '\n' ' ' || true)
+STAGED_TEST_FILES=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null | grep -E '\.spec\.ts$' | grep -v 'e2e-spec' | tr '\n' ' ' || true)
+STAGED_E2E_FILES=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null | grep -E '\.e2e-spec\.ts$' | tr '\n' ' ' || true)
+STAGED_CONFIG=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null | grep -E '(jest|package\.json|tsconfig|eslint\.config)' | tr '\n' ' ' || true)
+
+RAN_SOMETHING=0
+
+if [ -n "$STAGED_SOURCE_FILES" ]; then
+  echo "Running tests for staged source files..."
+  pnpm exec jest --config jest.config.js --bail --findRelatedTests $STAGED_SOURCE_FILES --passWithNoTests
+  RAN_SOMETHING=1
+fi
+
+if [ -n "$STAGED_TEST_FILES" ]; then
+  echo "Running tests for staged test files..."
+  pnpm exec jest --config jest.config.js --bail --passWithNoTests $STAGED_TEST_FILES
+  RAN_SOMETHING=1
+fi
+
+if [ -n "$STAGED_E2E_FILES" ]; then
+  echo "Running e2e tests for staged e2e files..."
+  pnpm exec jest --config jest-e2e.config.js --bail --passWithNoTests $STAGED_E2E_FILES
+  RAN_SOMETHING=1
+fi
+
+if [ "$RAN_SOMETHING" -eq 0 ] && [ -n "$STAGED_CONFIG" ]; then
+  echo "Config files changed, running all unit tests..."
+  pnpm exec jest --config jest.config.js --bail --passWithNoTests
+  RAN_SOMETHING=1
+fi
+
+if [ "$RAN_SOMETHING" -eq 0 ]; then
+  echo "No test-relevant files staged, skipping tests..."
+fi
