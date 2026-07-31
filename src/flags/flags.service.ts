@@ -20,6 +20,7 @@ import { RequestLogService } from '../request-log/request-log.service';
 import {
   canonicalRulesJson,
   diffChangedFields,
+  freshTimestamp,
   projectFlagsResourceId,
 } from './flags.service.utils';
 import { FeatureFlagRuntimeCacheService } from './cache/feature-flag-runtime-cache.service';
@@ -51,7 +52,7 @@ export class FlagsService {
         `Flag already exists in project ${projectKey}: ${key}`,
       );
     }
-    const now = new Date().toISOString();
+    const now = freshTimestamp();
     const rules = dto.rules !== undefined ? dto.rules : [];
     const snapshot = this.buildSnapshot({
       key,
@@ -207,7 +208,7 @@ export class FlagsService {
     if (agg.enabled === enabled) {
       return this.toAdminCurrent(agg);
     }
-    await this.flags.patchMetadata(pk, fk, { enabled });
+    await this.flags.patchMetadata(pk, fk, { enabled }, agg.updatedAt);
     const refreshed = await this.flags.findByLookup(pk, fk);
     if (!refreshed) {
       throw new NotFoundException(`Flag not found: ${fk}`);
@@ -259,12 +260,17 @@ export class FlagsService {
       dto.enabled !== undefined && dto.enabled !== agg.enabled;
 
     if (!rulesChanged && (descChanged || enabledChanged)) {
-      await this.flags.patchMetadata(pk, routeKey, {
-        ...(dto.description !== undefined
-          ? { description: dto.description }
-          : {}),
-        ...(dto.enabled !== undefined ? { enabled: dto.enabled } : {}),
-      });
+      await this.flags.patchMetadata(
+        pk,
+        routeKey,
+        {
+          ...(dto.description !== undefined
+            ? { description: dto.description }
+            : {}),
+          ...(dto.enabled !== undefined ? { enabled: dto.enabled } : {}),
+        },
+        agg.updatedAt,
+      );
       const refreshed = await this.flags.findByLookup(pk, routeKey);
       if (!refreshed) {
         throw new NotFoundException(`Flag not found: ${routeKey}`);
@@ -315,7 +321,7 @@ export class FlagsService {
       enabled: dto.enabled !== undefined ? dto.enabled : agg.enabled,
       rules,
       currentVersion: agg.currentVersion + 1,
-      updatedAt: new Date().toISOString(),
+      updatedAt: freshTimestamp(),
       versions: [...agg.versions],
     };
     const snapshot = this.buildSnapshot({
@@ -330,7 +336,7 @@ export class FlagsService {
       createdAt: next.updatedAt,
       createdBy: principalId,
     });
-    await this.flags.updateByLookup(next, routeKey);
+    await this.flags.updateByLookup(next, routeKey, agg.updatedAt);
     this.logger.log(
       `Flag updated: project=${pk} key=${next.key} v=${next.currentVersion}`,
     );
@@ -448,7 +454,7 @@ export class FlagsService {
       throw new BadRequestException(`Version not found: ${targetVersion}`);
     }
     const snap = entry.snapshot;
-    const now = new Date().toISOString();
+    const now = freshTimestamp();
     const merged: FlagAggregate = {
       ...agg,
       projectKey: pk,
@@ -472,7 +478,7 @@ export class FlagsService {
       createdAt: now,
       createdBy: principalId,
     });
-    await this.flags.updateByLookup(merged, routeKey);
+    await this.flags.updateByLookup(merged, routeKey, agg.updatedAt);
     this.logger.log(
       `Flag rollback: project=${pk} key=${merged.key} restoredFrom=v${targetVersion} newVersion=v${merged.currentVersion}`,
     );

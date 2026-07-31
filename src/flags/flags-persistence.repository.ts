@@ -1,10 +1,15 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { FlagEntity } from '../database/entities/flag.entity';
 import type { VersionEntryModel } from './models/version-entry.model';
 import type { FlagConditionRow } from './types/flag.types';
 import { FlagVersionEntity } from '../database/entities/flag-version.entity';
+import { freshTimestamp } from './flags.service.utils';
 
 /** Matches admin controller default when `x-principal-id` is missing. */
 function normalizeCreatedBy(createdBy: string | null | undefined): string {
@@ -50,11 +55,22 @@ export interface IFlagsPersistence {
     flagKeys: string[],
   ): Promise<Map<string, FlagAggregate>>;
   insert(agg: FlagAggregate): Promise<void>;
-  updateByLookup(agg: FlagAggregate, lookupFlagKey: string): Promise<void>;
+  /**
+   * @param expectedUpdatedAt Okuma anında görülen `updatedAt` (ISO). DB'deki
+   * güncel değer bununla eşleşmiyorsa {@link ConflictException} fırlatılır
+   * (optimistic concurrency — flag arada başka biri tarafından değiştirilmiş).
+   */
+  updateByLookup(
+    agg: FlagAggregate,
+    lookupFlagKey: string,
+    expectedUpdatedAt: string,
+  ): Promise<void>;
+  /** @param expectedUpdatedAt Bkz. {@link updateByLookup}. */
   patchMetadata(
     projectKey: string,
     flagKey: string,
     fields: { description?: string; enabled?: boolean },
+    expectedUpdatedAt: string,
   ): Promise<void>;
   delete(projectKey: string, flagKey: string): Promise<void>;
 }
@@ -169,6 +185,7 @@ export class FlagsPersistenceRepository implements IFlagsPersistence {
     projectKey: string,
     flagKey: string,
     fields: { description?: string; enabled?: boolean },
+    expectedUpdatedAt: string,
   ): Promise<void> {
     const row = await this.repo.findOne({
       where: { projectKey: projectKey.trim(), flagKey: flagKey.trim() },
@@ -178,19 +195,29 @@ export class FlagsPersistenceRepository implements IFlagsPersistence {
         `Flag row missing for metadata patch: ${flagKey}`,
       );
     }
+    const patch: { description?: string; enabled?: boolean; updatedAt: Date } =
+      { updatedAt: new Date(freshTimestamp()) };
     if (fields.description !== undefined) {
-      row.description = fields.description;
+      patch.description = fields.description;
     }
     if (fields.enabled !== undefined) {
-      row.enabled = fields.enabled;
+      patch.enabled = fields.enabled;
     }
-    row.updatedAt = new Date();
-    await this.repo.save(row);
+    const result = await this.repo.update(
+      { id: row.id, updatedAt: new Date(expectedUpdatedAt) },
+      patch,
+    );
+    if (!result.affected) {
+      throw new ConflictException(
+        `Flag was modified concurrently, reload and retry: ${flagKey}`,
+      );
+    }
   }
 
   async updateByLookup(
     agg: FlagAggregate,
     lookupFlagKey: string,
+    expectedUpdatedAt: string,
   ): Promise<void> {
     const row = await this.repo.findOne({
       where: {
@@ -203,10 +230,38 @@ export class FlagsPersistenceRepository implements IFlagsPersistence {
         `Flag row missing for update: ${lookupFlagKey}`,
       );
     }
-    await this.versionRepo.delete({ flagId: row.id });
-    this.applyAggregate(row, agg);
-    await this.repo.save(row);
-    await this.versionRepo.save(this.versionEntitiesFromAggregate(row.id, agg));
+    const newVersion = agg.versions[agg.versions.length - 1];
+    await this.repo.manager.transaction(async (manager) => {
+      const result = await manager.update(
+        FlagEntity,
+        { id: row.id, updatedAt: new Date(expectedUpdatedAt) },
+        {
+          projectKey: agg.projectKey,
+          flagKey: agg.key,
+          description: agg.description,
+          enabled: agg.enabled,
+          // TypeORM'un QueryDeepPartialEntity tipi, jsonb sütunundaki
+          // FlagFilterRow.value: unknown alanıyla yapısal olarak eşleşmiyor.
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          rules: structuredClone(agg.rules) as any,
+          currentVersion: agg.currentVersion,
+          updatedAt: new Date(agg.updatedAt),
+        },
+      );
+      if (!result.affected) {
+        throw new ConflictException(
+          `Flag was modified concurrently, reload and retry: ${lookupFlagKey}`,
+        );
+      }
+      if (newVersion) {
+        await manager.save(
+          this.versionEntitiesFromAggregate(row.id, {
+            ...agg,
+            versions: [newVersion],
+          }),
+        );
+      }
+    });
   }
 
   async delete(projectKey: string, flagKey: string): Promise<void> {

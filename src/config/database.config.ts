@@ -14,5 +14,10 @@ export default registerAs('database', () => ({
   user: process.env.DB_USER ?? process.env.DATABASE_USER ?? '',
   password: process.env.DB_PASSWORD ?? process.env.DATABASE_PASSWORD ?? '',
   name: process.env.DB_NAME ?? process.env.DATABASE_NAME ?? 'myapp',
-  sync: process.env.DB_SYNC === 'true' || true,
+  sync: process.env.DB_SYNC === 'true',
+  poolMax: parseInt(process.env.DB_POOL_MAX ?? '20', 10),
+  poolConnectionTimeoutMs: parseInt(
+    process.env.DB_POOL_CONNECTION_TIMEOUT_MS ?? '5000',
+    10,
+  ),
 }));

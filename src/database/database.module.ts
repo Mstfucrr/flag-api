@@ -5,6 +5,10 @@ import { FlagEntity } from './entities/flag.entity';
 import { ProjectEntity } from './entities/project.entity';
 import { FlagVersionEntity } from './entities/flag-version.entity';
 import { RequestLogEntity } from './entities/request-log.entity';
+import {
+  buildTypeOrmConnectionOptions,
+  type TypeOrmConnectionEnv,
+} from './typeorm-connection';
 
 @Module({
   imports: [
@@ -12,15 +16,22 @@ import { RequestLogEntity } from './entities/request-log.entity';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
-        const url = config.get<string>('database.url', '');
-        const host = config.get<string>('database.host', 'localhost');
-        const port = config.get<number>('database.port', 5432);
-        const username = config.get<string>('database.user', '');
-        const password = config.get<string>('database.password', '');
-        const database = config.get<string>('database.name', 'myapp');
-        const synchronize = config.get<boolean>('database.sync', true);
+        const env: TypeOrmConnectionEnv = {
+          url: config.get<string>('database.url', ''),
+          host: config.get<string>('database.host', 'localhost'),
+          port: config.get<number>('database.port', 5432),
+          user: config.get<string>('database.user', ''),
+          password: config.get<string>('database.password', ''),
+          name: config.get<string>('database.name', 'myapp'),
+          poolMax: config.get<number>('database.poolMax', 20),
+          poolConnectionTimeoutMs: config.get<number>(
+            'database.poolConnectionTimeoutMs',
+            5000,
+          ),
+        };
+        const synchronize = config.get<boolean>('database.sync', false);
 
-        const base = {
+        return {
           type: 'postgres' as const,
           entities: [
             ProjectEntity,
@@ -30,18 +41,7 @@ import { RequestLogEntity } from './entities/request-log.entity';
           ],
           synchronize,
           autoLoadEntities: false,
-        };
-
-        if (url) {
-          return { ...base, url };
-        }
-        return {
-          ...base,
-          host,
-          port,
-          username,
-          password,
-          database,
+          ...buildTypeOrmConnectionOptions(env),
         };
       },
     }),

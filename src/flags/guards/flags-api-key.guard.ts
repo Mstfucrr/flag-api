@@ -22,9 +22,6 @@ export class FlagsApiKeyGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean {
     const expected = (this.config.get<string>('flags.apiKey') ?? '').trim();
-    if (!expected) {
-      return true;
-    }
 
     const req = context.switchToHttp().getRequest<Request>();
     const token = extractBearer(req.headers.authorization);

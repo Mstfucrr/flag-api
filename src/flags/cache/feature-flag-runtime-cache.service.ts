@@ -29,6 +29,17 @@ export interface RuntimeFlagsSnapshot {
 export class FeatureFlagRuntimeCacheService {
   private readonly logger = new Logger(FeatureFlagRuntimeCacheService.name);
 
+  /**
+   * Proje başına, o an sürmekte olan bir DB rebuild'i varsa Promise'i burada
+   * tutar. Cache-miss stampede'i önler: aynı projeye aynı anda gelen N
+   * `evaluate` isteği, N ayrı DB sorgusu yerine bu tek Promise'i paylaşır
+   * (yalnızca bu pod içinde — pod'lar arası koordinasyon değil).
+   */
+  private readonly inFlightRebuilds = new Map<
+    string,
+    Promise<RuntimeFlagsSnapshot>
+  >();
+
   constructor(
     private readonly redisCache: RedisCacheService,
     private readonly flagsRepo: FlagsPersistenceRepository,
@@ -108,6 +119,22 @@ export class FeatureFlagRuntimeCacheService {
     if (hit) {
       return hit;
     }
+
+    const existing = this.inFlightRebuilds.get(pk);
+    if (existing) {
+      return existing;
+    }
+
+    const rebuild = this.rebuildAndCacheForEvaluate(pk).finally(() => {
+      this.inFlightRebuilds.delete(pk);
+    });
+    this.inFlightRebuilds.set(pk, rebuild);
+    return rebuild;
+  }
+
+  private async rebuildAndCacheForEvaluate(
+    pk: string,
+  ): Promise<RuntimeFlagsSnapshot> {
     const snap = await this.rebuildRuntimeSnapshot(pk);
     try {
       await this.setRuntimeSnapshot(pk, snap);

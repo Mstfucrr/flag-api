@@ -8,6 +8,23 @@ export function projectFlagsResourceId(projectKey: string): string {
   return `/feature-flags/projects/${projectKey.trim()}`;
 }
 
+let lastFreshTimestampMs = 0;
+
+/**
+ * `updatedAt` optimistic-concurrency token'ı olarak kullanıldığı için, aynı
+ * milisaniye içinde art arda gelen iki mutasyonun aynı değeri üretmesini
+ * engeller (`Date.now()` tek başına milisaniye çözünürlüklü — çok hızlı ardışık
+ * yazımlarda çakışabilir). Süreç içinde kesinlikle artan bir zaman damgası döner;
+ * gerçek saatten az miktarda ileride kalabilir, bu `updatedAt`'in amacı için
+ * (audit + concurrency token) önemsizdir.
+ */
+export function freshTimestamp(): string {
+  const now = Date.now();
+  lastFreshTimestampMs =
+    now > lastFreshTimestampMs ? now : lastFreshTimestampMs + 1;
+  return new Date(lastFreshTimestampMs).toISOString();
+}
+
 /**
  * Kuralları kararlı (canonical) bir JSON string’e çevirir: koşul ve filtre sırası
  * normalize edilir; böylece aynı anlamsal içerik farklı sıralamada gelse bile

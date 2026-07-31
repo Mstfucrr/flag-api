@@ -7,6 +7,7 @@ import type {
   FlagAggregate,
   IFlagsPersistence,
 } from './flags-persistence.repository';
+import { freshTimestamp } from './flags.service.utils';
 
 /** In-memory store for unit tests (no PostgreSQL). */
 @Injectable()
@@ -65,11 +66,21 @@ export class MemoryFlagsPersistence implements IFlagsPersistence {
     return Promise.resolve();
   }
 
-  updateByLookup(agg: FlagAggregate, lookupFlagKey: string): Promise<void> {
+  updateByLookup(
+    agg: FlagAggregate,
+    lookupFlagKey: string,
+    expectedUpdatedAt: string,
+  ): Promise<void> {
     const oldId = this.rowId(agg.projectKey, lookupFlagKey);
-    if (!this.map.has(oldId)) {
+    const current = this.map.get(oldId);
+    if (!current) {
       throw new NotFoundException(
         `Flag row missing for update: ${lookupFlagKey}`,
+      );
+    }
+    if (current.updatedAt !== expectedUpdatedAt) {
+      throw new ConflictException(
+        `Flag was modified concurrently, reload and retry: ${lookupFlagKey}`,
       );
     }
     const nextId = this.rowId(agg.projectKey, agg.key);
@@ -82,6 +93,7 @@ export class MemoryFlagsPersistence implements IFlagsPersistence {
     projectKey: string,
     flagKey: string,
     fields: { description?: string; enabled?: boolean },
+    expectedUpdatedAt: string,
   ): Promise<void> {
     const id = this.rowId(projectKey, flagKey);
     const v = this.map.get(id);
@@ -90,12 +102,17 @@ export class MemoryFlagsPersistence implements IFlagsPersistence {
         `Flag row missing for metadata patch: ${flagKey}`,
       );
     }
+    if (v.updatedAt !== expectedUpdatedAt) {
+      throw new ConflictException(
+        `Flag was modified concurrently, reload and retry: ${flagKey}`,
+      );
+    }
     const next: FlagAggregate = {
       ...v,
       description:
         fields.description !== undefined ? fields.description : v.description,
       enabled: fields.enabled !== undefined ? fields.enabled : v.enabled,
-      updatedAt: new Date().toISOString(),
+      updatedAt: freshTimestamp(),
     };
     this.map.set(id, structuredClone(next));
     return Promise.resolve();

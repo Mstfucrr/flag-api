@@ -37,9 +37,18 @@ function configuredLogLevels(): LogLevel[] | undefined {
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
+
+  if (!(process.env.FLAGS_API_KEY ?? '').trim()) {
+    logger.fatal(
+      'FLAGS_API_KEY is required and must not be empty. Refusing to start.',
+    );
+    process.exit(1);
+  }
+
   const app = await NestFactory.create(AppModule, {
     logger: configuredLogLevels(),
   });
+  app.enableShutdownHooks();
   app.enableCors({
     origin: true,
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],

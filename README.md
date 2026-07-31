@@ -60,15 +60,17 @@ Varsayılan HTTP portu **3001** (`PORT` ile değiştirilebilir). Swagger: `http:
 | `PORT`                     | Hayır         | HTTP portu (varsayılan `3001`).                                                                                                                                                                                    |
 | `DATABASE_URL` veya `DB_*` | Evet (üretim) | PostgreSQL bağlantısı.                                                                                                                                                                                             |
 | `DB_SYNC`                  | Hayır         | `true` iken şema entity’lerden senkron (yalnızca geliştirme).                                                                                                                                                      |
+| `DB_POOL_MAX`              | Hayır         | Postgres bağlantı havuzu boyutu; varsayılan `20`. `instance_sayısı × bu değer`, Postgres `max_connections`'ı aşmamalı.                                                                                             |
+| `DB_POOL_CONNECTION_TIMEOUT_MS` | Hayır    | Havuzda boş bağlantı yoksa ne kadar beklenip sonra hata verileceği (ms); varsayılan `5000`. `pg` varsayılanı `0` (sınırsız bekleme) olduğu için kasıtlı override.                                                  |
 | `REDIS_*`                  | Hayır         | Redis tabanlı runtime snapshot önbelleği.                                                                                                                                                                          |
 | `THROTTLER_TTL`            | Hayır         | Genel HTTP rate limit penceresi (ms); varsayılan `60000`.                                                                                                                                                          |
 | `THROTTLER_LIMIT`          | Hayır         | Genel HTTP istek limiti; varsayılan `1000`. Admin controller'ları `300/60000 ms` kullanır.                                                                                                                         |
 | `LOG_LEVEL`                | Hayır         | Virgülle ayrılmış NestJS log seviyeleri; ör. `error,warn,log`.                                                                                                                                                     |
 | `ENABLE_METRICS`           | Hayır         | `TRUE` olduğunda Instana collector başlatılır.                                                                                                                                                                     |
 | `INSTANA_*`                | Hayır         | Instana host, port, level ve servis adı ayarları.                                                                                                                                                                  |
-| **`FLAGS_API_KEY`**        | Hayır         | **Doluysa** runtime ve admin flag endpoint'leri `Authorization: Bearer <değer>` bekler; timing-safe karşılaştırma kullanılır. **Boş bırakılırsa** bu endpoint'lerde kimlik doğrulama uygulanmaz. |
+| **`FLAGS_API_KEY`**        | **Evet**      | Runtime ve admin flag endpoint'leri `Authorization: Bearer <değer>` bekler; timing-safe karşılaştırma kullanılır. Boş bırakılırsa süreç **başlamaz** (bkz. `main.ts` bootstrap kontrolü). |
 
-Üretimde `FLAGS_API_KEY` tanımlayıp runtime client'ta aynı değeri SDK `apiKey` veya `getHeaders` ile göndermeniz önerilir.
+`FLAGS_API_KEY` ile aynı değeri runtime client'ta SDK `apiKey` veya `getHeaders` ile göndermeniz gerekir.
 
 Rate limit aşıldığında `429` ve `{ "error": "RATE_LIMIT_EXCEEDED", "message": "..." }` döner. Geçerli JWT Bearer içindeki `sub` kullanıcı tracker'ı olarak kullanılır; aksi halde istemci IP'si kullanılır. Genel HTTP limiter in-memory ve API instance'ı bazlıdır; iş cooldown'ları gerektiğinde ayrıca Redis TTL ile uygulanır.
 
@@ -80,10 +82,10 @@ Rate limit aşıldığında `429` ve `{ "error": "RATE_LIMIT_EXCEEDED", "message
 
 ## Kimlik doğrulama (`FLAGS_API_KEY`)
 
-- Guard: `FlagsApiKeyGuard` — `FlagsSdkController` ve `FlagsAdminController` üzerinde.
-- İstemci: `@core-sdk/feature-flags-sdk` içinde `apiKey` doluysa `Authorization: Bearer` otomatik eklenir; boşsa başlık gönderilmez (`getHeaders` ile özelleştirilebilir).
+- Guard: `FlagsApiKeyGuard` — `FlagsSdkController` ve `FlagsAdminController` üzerinde, **zorunlu**. `FLAGS_API_KEY` tanımlı değilse süreç başlamaz.
+- İstemci: `@core-sdk/feature-flags-sdk` içinde `apiKey` doluysa `Authorization: Bearer` otomatik eklenir (`getHeaders` ile özelleştirilebilir).
 
-> **Not:** `ProjectsController` içindeki `ProjectsAdminGuard` şu an yer tutucudur. `RequestLogController` üzerinde de API key guard bulunmaz. Bu endpoint'ler production entegrasyonunda ayrıca korunmalıdır.
+> **Not:** `ProjectsController` (`admin/projects`) ve `RequestLogController` (`admin/request-logs`) kasıtlı olarak `FlagsApiKeyGuard` kullanmaz — bu uçların korunması ağ katmanına (ayrı bir API Gateway arkasında, dışarıya kapalı) bırakılmıştır. `ProjectsAdminGuard` bu nedenle bilinçli bir placeholder'dır; bu varsayım geçerliliğini yitirirse (ör. servis gateway olmadan expose edilirse) burada gerçek bir auth guard'a ihtiyaç duyulur.
 
 ## Testler
 
@@ -92,6 +94,25 @@ pnpm run test        # birim testleri
 pnpm run test:e2e    # uygulama e2e
 pnpm run test:cov    # coverage
 ```
+
+## Şema / migration
+
+Prod'da (ve `DB_SYNC=false` olan her ortamda) şema **migration** ile yönetilir,
+auto-sync ile değil:
+
+```bash
+npm run migration:generate -- src/database/migrations/Açıklayıcıİsim  # entity değişince
+npm run migration:run                                                 # uygula
+npm run migration:revert                                              # bir öncekine dön
+```
+
+Migration'lar deploy pipeline'ının açık bir adımı olarak çalıştırılmalı (build → migration:run →
+uygulamayı başlat) — uygulamanın kendisi boot'ta migration çalıştırmaz. Çoklu instance aynı anda
+ayağa kalktığında migration'ların yarışmasını engelleyen bir kilit yok; bu yüzden migration'ı
+her zaman **tek** bir adımda, yeni instance'lar başlamadan önce çalıştırın.
+
+Local geliştirmede `DB_SYNC=true` (`.env.example`) kullanmaya devam edebilirsiniz — migration
+gerekmez.
 
 ## Bayrak `rules` modeli
 

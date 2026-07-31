@@ -1,5 +1,5 @@
 import type { RuleOperator } from '@core-sdk/feature-flags-core';
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { RequestLogService } from '../request-log/request-log.service';
 import { FeatureFlagRuntimeCacheService } from './cache/feature-flag-runtime-cache.service';
@@ -249,6 +249,89 @@ describe('FlagsService', () => {
       await expect(
         service.setEnabled('p', 'missing', true, 'u1'),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('optimistic concurrency', () => {
+    it('rejects a stale concurrent update with ConflictException, keeps the winner intact', async () => {
+      await service.create(
+        {
+          projectKey: 'p',
+          key: 'race-key',
+          description: 'v0',
+          enabled: true,
+          rules: [oneFilterCondition('r1', 'x', 'eq', 1)],
+        },
+        'u1',
+      );
+
+      // İki "istemci" flag'i aynı anda okuyup güncelliyor; ikisi de aynı
+      // başlangıç durumunu görüyor (aynı updatedAt). Biri kazanmalı, diğeri
+      // ConflictException ile reddedilmeli — sessizce ezilmemeli.
+      const outcomes = await Promise.allSettled([
+        service.update(
+          'p',
+          'race-key',
+          { rules: [oneFilterCondition('r1', 'x', 'eq', 2)] },
+          'client-A',
+        ),
+        service.update(
+          'p',
+          'race-key',
+          { rules: [oneFilterCondition('r1', 'x', 'eq', 3)] },
+          'client-B',
+        ),
+      ]);
+
+      const fulfilled = outcomes.filter((o) => o.status === 'fulfilled');
+      const rejected = outcomes.filter((o) => o.status === 'rejected');
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect(rejected[0].reason).toBeInstanceOf(ConflictException);
+
+      // Kaybeden isteğin verisi sessizce yazılmamış olmalı: kazananın son
+      // hali korunmuş olmalı, iki değişikliğin karışımı değil.
+      const finalState = await service.findOneAdmin('p', 'race-key');
+      expect(finalState.currentVersion).toBe(2);
+    });
+
+    it('preserves full version history across several sequential updates', async () => {
+      await service.create(
+        {
+          projectKey: 'p',
+          key: 'hist-key',
+          description: 'v0',
+          enabled: true,
+          rules: [oneFilterCondition('r1', 'x', 'eq', 1)],
+        },
+        'u1',
+      );
+      await service.update(
+        'p',
+        'hist-key',
+        { rules: [oneFilterCondition('r1', 'x', 'eq', 2)] },
+        'u2',
+      );
+      await service.update(
+        'p',
+        'hist-key',
+        { rules: [oneFilterCondition('r1', 'x', 'eq', 3)] },
+        'u3',
+      );
+      await service.update(
+        'p',
+        'hist-key',
+        { rules: [oneFilterCondition('r1', 'x', 'eq', 4)] },
+        'u4',
+      );
+
+      const h = await service.getHistory('p', 'hist-key');
+      expect(h.versions.map((v) => v.version).sort((a, b) => a - b)).toEqual([
+        1, 2, 3, 4,
+      ]);
+
+      const v1 = await service.getVersionSnapshot('p', 'hist-key', 1);
+      expect(v1.snapshot.rules[0].filters[0].value).toBe(1);
     });
   });
 

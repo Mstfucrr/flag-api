@@ -1,2 +1,7 @@
-overrides:
-  '@core-sdk/feature-flags-core': link:../../../feature-flag-workspace/core-sdk/packages/feature-flags-core
+allowBuilds:
+  '@instana/autoprofile': true
+  '@nestjs/core': true
+  '@scarf/scarf': false
+  event-loop-stats: true
+  gcstats.js: true
+  unrs-resolver: true
