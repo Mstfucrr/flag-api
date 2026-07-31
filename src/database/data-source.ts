@@ -4,10 +4,7 @@ import { FlagEntity } from './entities/flag.entity';
 import { FlagVersionEntity } from './entities/flag-version.entity';
 import { ProjectEntity } from './entities/project.entity';
 import { RequestLogEntity } from './entities/request-log.entity';
-import {
-  buildTypeOrmConnectionOptions,
-  readTypeOrmConnectionEnvFromProcess,
-} from './typeorm-connection';
+import { buildTypeOrmConnectionOptions, readTypeOrmConnectionEnvFromProcess } from './typeorm-connection';
 
 // `ConfigModule.forRoot`'un okuduğu dosyalarla aynı sıra (app.module.ts).
 loadEnv({ path: '.env' });
@@ -22,9 +19,9 @@ loadEnv({ path: '.env.local', override: true });
  *   npm run migration:revert
  */
 export default new DataSource({
-  type: 'postgres',
-  entities: [ProjectEntity, FlagEntity, FlagVersionEntity, RequestLogEntity],
-  migrations: ['src/database/migrations/*.ts'],
-  synchronize: false,
-  ...buildTypeOrmConnectionOptions(readTypeOrmConnectionEnvFromProcess()),
+    type: 'postgres',
+    entities: [ProjectEntity, FlagEntity, FlagVersionEntity, RequestLogEntity],
+    migrations: ['src/database/migrations/*.ts'],
+    synchronize: false,
+    ...buildTypeOrmConnectionOptions(readTypeOrmConnectionEnvFromProcess()),
 });

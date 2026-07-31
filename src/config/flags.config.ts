@@ -7,5 +7,5 @@ import { registerAs } from '@nestjs/config';
  * process when this is unset — see `main.ts`.
  */
 export default registerAs('flags', () => ({
-  apiKey: (process.env.FLAGS_API_KEY ?? '').trim(),
+    apiKey: (process.env.FLAGS_API_KEY ?? '').trim(),
 }));

@@ -1,0 +1,146 @@
+import { Injectable, Logger } from '@nestjs/common';
+import type { FlagConditionRow } from '../../../features/flags/types/flag.types';
+import type { FlagAggregate } from '../flags-persistence.repository';
+import { FlagsPersistenceRepository } from '../flags-persistence.repository';
+import { RedisCacheService } from '../../redis/redis-cache.service';
+import { runtimeFlagsKey, runtimeVersionKey } from './feature-flag-runtime-cache.keys';
+
+/** DB satırından değerlendirme için yeterli ince dilim (versiyon / geçmiş yok). */
+export interface RuntimeFlagSlice {
+    enabled: boolean;
+    rules: FlagConditionRow[];
+}
+
+/** Projeye özgü aktif bayrakların Redis’te tutulan tek görünümü. */
+export interface RuntimeFlagsSnapshot {
+    /** ISO zaman — gözlem / hata ayıklama */
+    builtAt: string;
+    byKey: Record<string, RuntimeFlagSlice>;
+}
+
+/**
+ * SDK runtime için türetilmiş önbellek: admin verisi burada tutulmaz,
+ * yalnızca aktif kuralların özeti.
+ */
+@Injectable()
+export class FeatureFlagRuntimeCacheService {
+    private readonly logger = new Logger(FeatureFlagRuntimeCacheService.name);
+
+    /**
+     * Proje başına, o an sürmekte olan bir DB rebuild'i varsa Promise'i burada
+     * tutar. Cache-miss stampede'i önler: aynı projeye aynı anda gelen N
+     * `evaluate` isteği, N ayrı DB sorgusu yerine bu tek Promise'i paylaşır
+     * (yalnızca bu pod içinde — pod'lar arası koordinasyon değil).
+     */
+    private readonly inFlightRebuilds = new Map<string, Promise<RuntimeFlagsSnapshot>>();
+
+    constructor(
+        private readonly redisCache: RedisCacheService,
+        private readonly flagsRepo: FlagsPersistenceRepository,
+    ) {}
+
+    /** Redis’teki anlık görüntü (yoksa null). */
+    async getRuntimeSnapshot(projectKey: string): Promise<RuntimeFlagsSnapshot | null> {
+        return this.redisCache.getJson<RuntimeFlagsSnapshot>(runtimeFlagsKey(projectKey));
+    }
+
+    async setRuntimeSnapshot(projectKey: string, snapshot: RuntimeFlagsSnapshot): Promise<void> {
+        await this.redisCache.setJson(runtimeFlagsKey(projectKey), snapshot, 0);
+    }
+
+    /** DB’den projeyi okuyup ince snapshot üretir (Redis yazmaz). */
+    async rebuildRuntimeSnapshot(projectKey: string): Promise<RuntimeFlagsSnapshot> {
+        const rows = await this.flagsRepo.listByProject(projectKey);
+        return this.toSnapshot(rows);
+    }
+
+    private toSnapshot(rows: FlagAggregate[]): RuntimeFlagsSnapshot {
+        const byKey: Record<string, RuntimeFlagSlice> = {};
+        for (const agg of rows) {
+            byKey[agg.key] = {
+                enabled: agg.enabled,
+                rules: structuredClone(agg.rules),
+            };
+        }
+        return { builtAt: new Date().toISOString(), byKey };
+    }
+
+    /** Mutasyon sonrası sürüm sayacı (+1). Redis kapalıysa sessizce atlanır. */
+    async bumpRuntimeVersion(projectKey: string): Promise<void> {
+        const n = await this.redisCache.incr(runtimeVersionKey(projectKey));
+        if (n === null) {
+            this.logger.warn(`Runtime sürüm artırılamadı (Redis yok): project=${projectKey}`);
+        }
+    }
+
+    /**
+     * Admin yazma işleminden sonra: DB kaydı tamam → snapshot yenile → sürüm artır.
+     * Redis hatası üretimi bozmaz; sadece loglanır.
+     */
+    async refreshRuntimeCacheAfterMutation(projectKey: string): Promise<void> {
+        const pk = projectKey.trim();
+        try {
+            const snap = await this.rebuildRuntimeSnapshot(pk);
+            await this.setRuntimeSnapshot(pk, snap);
+            await this.bumpRuntimeVersion(pk);
+        } catch (err: unknown) {
+            this.logger.warn(`Runtime önbellek güncellenemedi (DB başarılı olabilir): project=${pk}`, err);
+        }
+    }
+
+    /**
+     * Evaluate için: önce Redis; cache miss → DB’den üret ve Redis’e yaz (sürüm artışı yok).
+     */
+    async loadOrRebuildSnapshotForEvaluate(projectKey: string): Promise<RuntimeFlagsSnapshot> {
+        const pk = projectKey.trim();
+        const hit = await this.getRuntimeSnapshot(pk);
+        if (hit) {
+            return hit;
+        }
+
+        const existing = this.inFlightRebuilds.get(pk);
+        if (existing) {
+            return existing;
+        }
+
+        const rebuild = this.rebuildAndCacheForEvaluate(pk).finally(() => {
+            this.inFlightRebuilds.delete(pk);
+        });
+        this.inFlightRebuilds.set(pk, rebuild);
+        return rebuild;
+    }
+
+    private async rebuildAndCacheForEvaluate(pk: string): Promise<RuntimeFlagsSnapshot> {
+        const snap = await this.rebuildRuntimeSnapshot(pk);
+        try {
+            await this.setRuntimeSnapshot(pk, snap);
+        } catch (err: unknown) {
+            this.logger.warn(`Evaluate snapshot Redis’e yazılamadı, DB sonucu kullanılacak: project=${pk}`, err);
+        }
+        return snap;
+    }
+
+    /** Proje silindiğinde veya tüm bayraklar silindiğinde runtime anahtarlarını kaldırır. */
+    async clearProjectRuntime(projectKey: string): Promise<void> {
+        const pk = projectKey.trim();
+        try {
+            await this.redisCache.del(runtimeFlagsKey(pk));
+            await this.redisCache.del(runtimeVersionKey(pk));
+        } catch (err: unknown) {
+            this.logger.warn(`Runtime anahtarları silinemedi: project=${pk}`, err);
+        }
+    }
+
+    /**
+     * Elle iyileştirme: mutasyon sonrası ile aynı yenileme akışı (DB → Redis → sürüm).
+     */
+    async refreshRuntimeCacheManual(projectKey: string): Promise<{
+        ok: boolean;
+        snapshot: RuntimeFlagsSnapshot;
+    }> {
+        const pk = projectKey.trim();
+        await this.refreshRuntimeCacheAfterMutation(pk);
+        const snapshot = (await this.getRuntimeSnapshot(pk)) ?? (await this.rebuildRuntimeSnapshot(pk));
+        return { ok: true, snapshot };
+    }
+}
