@@ -31,7 +31,8 @@
         "docker:down": "docker compose -f docker-compose.dev.yml down",
         "docker:logs": "docker compose -f docker-compose.dev.yml logs -f",
         "start:local": "cp -n .env.example .env 2>/dev/null || true; pnpm run docker:up && pnpm run start:dev",
-        "prepare": "husky"
+        "prepare": "husky",
+        "prettier": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\""
     },
     "dependencies": {
         "@core-sdk/feature-flags-core": "^0.6.1",
