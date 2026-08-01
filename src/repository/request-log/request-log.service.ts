@@ -15,31 +15,6 @@ export type RequestLogAppendInput = {
     request: unknown;
 };
 
-type CursorPayload = { t: number; id: string };
-
-function encodeCursor(p: CursorPayload): string {
-    return Buffer.from(JSON.stringify(p), 'utf8')
-        .toString('base64')
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_')
-        .replace(/=+$/, '');
-}
-
-function decodeCursor(raw: string): CursorPayload | null {
-    try {
-        const pad = raw.length % 4 === 0 ? '' : '='.repeat(4 - (raw.length % 4));
-        const b64 = raw.replace(/-/g, '+').replace(/_/g, '/') + pad;
-        const json = Buffer.from(b64, 'base64').toString('utf8');
-        const o = JSON.parse(json) as { t?: number; id?: string };
-        if (typeof o.t !== 'number' || typeof o.id !== 'string') {
-            return null;
-        }
-        return { t: o.t, id: o.id };
-    } catch {
-        return null;
-    }
-}
-
 function createdAtToMs(value: string | number | Date): number {
     if (typeof value === 'number') {
         return value;
@@ -80,44 +55,29 @@ export class RequestLogService {
         }
     }
 
+    /** Sabit sayfa boyutlu (offset) sayfalama — cursor'suz, yön belirsizliği yok. */
     async query(dto: QueryRequestLogsDto): Promise<{
         items: Record<string, unknown>[];
-        prev?: string;
-        next?: string;
+        page: number;
+        pageSize: number;
+        total: number;
+        totalPages: number;
     }> {
-        const delta = dto.delta ?? 10;
+        const page = dto.page ?? 1;
+        const pageSize = dto.pageSize ?? 10;
         const descending = dto.descending !== false;
         const rid = dto.resourceId.trim();
 
-        const qb = this.repo
+        const [rows, total] = await this.repo
             .createQueryBuilder('l')
             .where('l.resource_id = :rid', { rid })
             .orderBy('l.created_at', descending ? 'DESC' : 'ASC')
             .addOrderBy('l.id', descending ? 'DESC' : 'ASC')
-            .take(delta + 1);
+            .skip((page - 1) * pageSize)
+            .take(pageSize)
+            .getManyAndCount();
 
-        if (dto.cursor) {
-            const c = decodeCursor(dto.cursor.trim());
-            if (c) {
-                if (descending) {
-                    qb.andWhere('(l.created_at < :ct OR (l.created_at = :ct AND l.id < :cid))', {
-                        ct: String(c.t),
-                        cid: c.id,
-                    });
-                } else {
-                    qb.andWhere('(l.created_at > :ct OR (l.created_at = :ct AND l.id > :cid))', {
-                        ct: String(c.t),
-                        cid: c.id,
-                    });
-                }
-            }
-        }
-
-        const rows = await qb.getMany();
-        const hasMore = rows.length > delta;
-        const slice = hasMore ? rows.slice(0, delta) : rows;
-
-        const items = slice.map((e) => ({
+        const items = rows.map((e) => ({
             id: e.id,
             resourceId: e.resourceId,
             code: e.code,
@@ -130,25 +90,12 @@ export class RequestLogService {
             createdAt: createdAtToMs(e.createdAt),
         }));
 
-        let next: string | undefined;
-        let prev: string | undefined;
-
-        if (hasMore && slice.length > 0) {
-            const last = slice[slice.length - 1];
-            next = encodeCursor({
-                t: createdAtToMs(last.createdAt),
-                id: last.id,
-            });
-        }
-
-        if (dto.cursor && slice.length > 0) {
-            const first = slice[0];
-            prev = encodeCursor({
-                t: createdAtToMs(first.createdAt),
-                id: first.id,
-            });
-        }
-
-        return { items, prev, next };
+        return {
+            items,
+            page,
+            pageSize,
+            total,
+            totalPages: Math.max(1, Math.ceil(total / pageSize)),
+        };
     }
 }

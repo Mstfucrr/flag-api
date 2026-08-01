@@ -14,19 +14,18 @@ export class QueryRequestLogsDto {
     @IsBoolean()
     descending?: boolean;
 
+    @ApiPropertyOptional({ default: 1, minimum: 1, description: '1-based page number' })
+    @IsOptional()
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    page?: number;
+
     @ApiPropertyOptional({ default: 10, minimum: 1, maximum: 100 })
     @IsOptional()
     @Type(() => Number)
     @IsInt()
     @Min(1)
     @Max(100)
-    delta?: number;
-
-    @ApiPropertyOptional({
-        description: 'Opaque cursor from previous response `next` or `prev`.',
-    })
-    @IsOptional()
-    @IsString()
-    @MaxLength(2048)
-    cursor?: string;
+    pageSize?: number;
 }

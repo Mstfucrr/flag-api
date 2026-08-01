@@ -16,10 +16,10 @@ export class RequestLogController {
 
     @Post('query')
     @HttpCode(HttpStatus.OK)
-    @ApiOperation({ summary: 'Query request audit logs (cursor pagination)' })
+    @ApiOperation({ summary: 'Query request audit logs (page pagination)' })
     @ApiBody({ type: QueryRequestLogsDto })
     @ApiOkResponse({
-        description: 'Paginated log items with optional prev/next cursors',
+        description: 'Paginated log items with page/pageSize/total/totalPages',
     })
     async query(@Body() dto: QueryRequestLogsDto) {
         return this.requestLogService.query(dto);
