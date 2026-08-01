@@ -93,7 +93,7 @@ export const options = SMOKE
 function headers() {
   const h = { 'Content-Type': 'application/json' };
   if (API_KEY) {
-    h['Authorization'] = `Bearer ${API_KEY}`;
+    h['X-Api-Key'] = API_KEY;
   }
   return h;
 }

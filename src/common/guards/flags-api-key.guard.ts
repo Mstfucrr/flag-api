@@ -3,14 +3,11 @@ import { ConfigService } from '@nestjs/config';
 import { timingSafeEqual } from 'crypto';
 import type { Request } from 'express';
 
-function extractBearer(authorization: unknown): string | null {
-    if (typeof authorization !== 'string') {
-        return null;
-    }
-    const m = /^Bearer\s+(.+)$/i.exec(authorization.trim());
-    return m?.[1]?.trim() ?? null;
-}
-
+/**
+ * Shared by `FlagsSdkController` and `FlagsAdminController` — a static
+ * pre-shared secret sent via `X-Api-Key`, deliberately not
+ * `Authorization: Bearer` since it isn't a delegated/expiring token.
+ */
 @Injectable()
 export class FlagsApiKeyGuard implements CanActivate {
     constructor(private readonly config: ConfigService) {}
@@ -19,15 +16,16 @@ export class FlagsApiKeyGuard implements CanActivate {
         const expected = (this.config.get<string>('flags.apiKey') ?? '').trim();
 
         const req = context.switchToHttp().getRequest<Request>();
-        const token = extractBearer(req.headers.authorization);
+        const header = req.headers['x-api-key'];
+        const token = (Array.isArray(header) ? header[0] : header)?.trim();
         if (!token) {
-            throw new UnauthorizedException('Missing or invalid Authorization');
+            throw new UnauthorizedException('Missing or invalid X-Api-Key');
         }
 
         const a = Buffer.from(token);
         const b = Buffer.from(expected);
         if (a.length !== b.length || !timingSafeEqual(a, b)) {
-            throw new UnauthorizedException('Missing or invalid Authorization');
+            throw new UnauthorizedException('Missing or invalid X-Api-Key');
         }
         return true;
     }

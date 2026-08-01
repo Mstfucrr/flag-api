@@ -121,14 +121,14 @@ Tam referans: [`.env.example`](.env.example).
 
 ### Trafik koruması / observability
 
-| Variable            | Required | Description                                                                                 |
-| ------------------- | -------- | ------------------------------------------------------------------------------------------- |
-| `THROTTLER_TTL`     | Hayır    | Genel HTTP rate limit penceresi (ms); varsayılan `60000`.                                   |
-| `THROTTLER_LIMIT`   | Hayır    | Genel HTTP istek limiti; varsayılan `1000`. Admin controller'ları `300/60000ms`.            |
-| `LOG_LEVEL`         | Hayır    | Virgülle ayrılmış NestJS log seviyeleri; ör. `error,warn,log`.                              |
-| `ENABLE_METRICS`    | Hayır    | `TRUE` olduğunda Instana collector başlatılır.                                              |
-| `INSTANA_*`         | Hayır    | Instana host/port/level/servis adı ayarları.                                                |
-| **`FLAGS_API_KEY`** | **Evet** | Runtime/admin flag uçları `Authorization: Bearer <değer>` bekler. Boşsa süreç **başlamaz**. |
+| Variable            | Required | Description                                                                      |
+| ------------------- | -------- | -------------------------------------------------------------------------------- |
+| `THROTTLER_TTL`     | Hayır    | Genel HTTP rate limit penceresi (ms); varsayılan `60000`.                        |
+| `THROTTLER_LIMIT`   | Hayır    | Genel HTTP istek limiti; varsayılan `1000`. Admin controller'ları `300/60000ms`. |
+| `LOG_LEVEL`         | Hayır    | Virgülle ayrılmış NestJS log seviyeleri; ör. `error,warn,log`.                   |
+| `ENABLE_METRICS`    | Hayır    | `TRUE` olduğunda Instana collector başlatılır.                                   |
+| `INSTANA_*`         | Hayır    | Instana host/port/level/servis adı ayarları.                                     |
+| **`FLAGS_API_KEY`** | **Evet** | Runtime/admin flag uçları `X-Api-Key: <değer>` bekler. Boşsa süreç **başlamaz**. |
 
 Rate limit aşıldığında `429` ve `{ "error": "RATE_LIMIT_EXCEEDED", "message": "..." }` döner.
 
@@ -247,7 +247,7 @@ docker run -p 127.0.0.1:3001:3001 --env-file .env feature-flag-api:latest
 ## Kimlik doğrulama (`FLAGS_API_KEY`)
 
 - Guard: `FlagsApiKeyGuard` — `FlagsSdkController` ve `FlagsAdminController` üzerinde, **zorunlu**. `FLAGS_API_KEY` tanımlı değilse süreç başlamaz.
-- İstemci: `@core-sdk/feature-flags-sdk` içinde `apiKey` doluysa `Authorization: Bearer` otomatik eklenir (`getHeaders` ile özelleştirilebilir).
+- İstemci: `@core-sdk/feature-flags-sdk` içinde `apiKey` doluysa `X-Api-Key` otomatik eklenir (`getHeaders` ile özelleştirilebilir).
 
 > **Not:** `ProjectsController` (`admin/projects`) ve `RequestLogController` (`admin/request-logs`) kasıtlı olarak `FlagsApiKeyGuard` kullanmaz — bu uçların korunması ağ katmanına (ayrı bir API Gateway arkasında, dışarıya kapalı) bırakılmıştır. `ProjectsAdminGuard` bu nedenle bilinçli bir placeholder'dır; bu varsayım geçerliliğini yitirirse (ör. servis gateway olmadan expose edilirse) burada gerçek bir auth guard'a ihtiyaç duyulur.
 

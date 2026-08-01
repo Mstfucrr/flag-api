@@ -42,7 +42,7 @@ describe('RequestLogController (e2e) — page pagination', () => {
         for (let i = 0; i < 5; i++) {
             await request(app.getHttpServer())
                 .post(`/admin/projects/${projectKey}/flags`)
-                .set('Authorization', `Bearer ${FLAGS_API_KEY}`)
+                .set('x-api-key', FLAGS_API_KEY)
                 .send({ key: `flag-${i}`, enabled: true, rules: [] })
                 .expect(201);
         }
