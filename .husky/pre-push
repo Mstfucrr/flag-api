@@ -1,5 +1,7 @@
 # Validate branch name before push
 sh "$(dirname "$0")/validate-branch.sh"
 
+# Unit tests only — no infra required. E2E tests need Postgres/Redis and run
+# in CI (with real service containers), not here, so pushing never blocks on
+# whether Docker happens to be running locally.
 pnpm exec jest --config jest.config.js --bail
-pnpm exec jest --config jest-e2e.config.js --bail
