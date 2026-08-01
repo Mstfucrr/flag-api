@@ -132,6 +132,14 @@ Tam referans: [`.env.example`](.env.example).
 
 Rate limit aşıldığında `429` ve `{ "error": "RATE_LIMIT_EXCEEDED", "message": "..." }` döner.
 
+> **Not:** `:projectKey` route param'ı olan uçlarda (SDK/`evaluate` dahil) tracker proje bazlı
+> (`project:<key>`) çalışır — IP'ye hiç bakılmaz. IP'ye sadece `:projectKey` içermeyen 3 admin
+> ucunda düşülür (`POST /admin/projects`, `GET /admin/projects`,
+> `POST /admin/request-logs/query`); bunlar da zaten gateway'in (`monolith_api`) arkasında
+> çalışacak. `x-forwarded-for`/`x-real-ip` başlıklarına güvenilir — **gateway bu uçlara proxy
+> yaparken istemcinin gönderdiği değeri silip kendi çözdüğü gerçek istemci IP'sini yazmalı**,
+> aksi halde bu başlıklar spoof edilip rate limit atlatılabilir/başkasına yönlendirilebilir.
+
 ---
 
 ## API overview
