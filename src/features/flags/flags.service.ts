@@ -150,6 +150,41 @@ export class FlagsService {
         return { results };
     }
 
+    /**
+     * `evaluate` ile aynı değerlendirme mantığını, farklı bağlamlara sahip birden fazla
+     * grup için TEK snapshot yüklemesiyle çalıştırır (N ayrı HTTP isteği yerine 1 istek).
+     * Her grup kendi `context`'iyle değerlendirilir; sonuçlar istemcinin verdiği `id` ile eşlenir.
+     */
+    async evaluateBatch(
+        projectKey: string,
+        groups: { id: string; flagKeys: string[]; context?: Record<string, unknown> }[],
+    ) {
+        const p = projectKey.trim();
+        const snapshot = await this.runtimeCache.loadOrRebuildSnapshotForEvaluate(p);
+        const results: Record<string, { results: Record<string, { enabled: boolean }> }> = {};
+
+        for (const group of groups) {
+            const groupContext = group.context ?? {};
+            const groupResults: Record<string, { enabled: boolean }> = {};
+            for (const rawKey of group.flagKeys) {
+                const key = rawKey.trim();
+                if (!key) {
+                    continue;
+                }
+                const slice = snapshot.byKey[key];
+                groupResults[key] = {
+                    enabled:
+                        slice !== undefined
+                            ? this.evaluateRuntimeEnabled(slice.enabled, slice.rules, groupContext)
+                            : false,
+                };
+            }
+            results[group.id] = { results: groupResults };
+        }
+
+        return { results };
+    }
+
     /** Tek flag, runtime şekli (yalnızca key). */
     async findOne(projectKey: string, key: string) {
         const agg = await this.flags.findByLookup(projectKey, key);

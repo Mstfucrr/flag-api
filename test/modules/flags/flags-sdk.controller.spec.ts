@@ -11,6 +11,7 @@ import { FiyuuThrottlerGuard } from '../../../src/common/throttling/fiyuu-thrott
 
 describe('FlagsSdkController', () => {
     let controller: FlagsSdkController;
+    let service: FlagsService;
 
     beforeEach(async () => {
         const moduleBuilder = Test.createTestingModule({
@@ -53,9 +54,38 @@ describe('FlagsSdkController', () => {
             .compile();
 
         controller = module.get<FlagsSdkController>(FlagsSdkController);
+        service = module.get<FlagsService>(FlagsService);
     });
 
     it('should be defined', () => {
         expect(controller).toBeDefined();
+    });
+
+    describe('evaluateBatch', () => {
+        it('delegates to FlagsService.evaluateBatch and returns per-group results', async () => {
+            await service.create(
+                {
+                    projectKey: 'acme',
+                    key: 'x_flag',
+                    enabled: true,
+                    rules: [],
+                },
+                'u1',
+            );
+
+            const out = await controller.evaluateBatch('acme', {
+                groups: [
+                    { id: 'row-1', flagKeys: ['x_flag'], context: {} },
+                    { id: 'row-2', flagKeys: ['x_flag'], context: {} },
+                ],
+            });
+
+            expect(out).toEqual({
+                results: {
+                    'row-1': { results: { x_flag: { enabled: true } } },
+                    'row-2': { results: { x_flag: { enabled: true } } },
+                },
+            });
+        });
     });
 });

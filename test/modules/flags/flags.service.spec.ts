@@ -15,6 +15,7 @@ const oneFilterCondition = (id: string, field: string, operator: RuleOperator, v
 
 describe('FlagsService', () => {
     let service: FlagsService;
+    let runtimeCache: FeatureFlagRuntimeCacheService;
     const mockRequestLog = { append: jest.fn().mockResolvedValue(undefined) };
 
     beforeEach(async () => {
@@ -47,6 +48,7 @@ describe('FlagsService', () => {
         }).compile();
 
         service = module.get<FlagsService>(FlagsService);
+        runtimeCache = module.get<FeatureFlagRuntimeCacheService>(FeatureFlagRuntimeCacheService);
     });
 
     it('should be defined', () => {
@@ -304,6 +306,85 @@ describe('FlagsService', () => {
                     'unknown-flag': { enabled: false },
                 },
             });
+        });
+    });
+
+    describe('evaluateBatch', () => {
+        it('evaluates the same flag independently per group context, keyed by group id', async () => {
+            await service.create(
+                {
+                    projectKey: 'partner-frontend',
+                    key: 'show_live_support_chat',
+                    enabled: true,
+                    rules: [oneFilterCondition('r1', 'accountId', 'eq', '9742948')],
+                },
+                'u1',
+            );
+
+            const out = await service.evaluateBatch('partner-frontend', [
+                { id: 'row-1', flagKeys: ['show_live_support_chat'], context: { accountId: '9742948' } },
+                { id: 'row-2', flagKeys: ['show_live_support_chat'], context: { accountId: 'someone-else' } },
+            ]);
+
+            expect(out).toEqual({
+                results: {
+                    'row-1': { results: { show_live_support_chat: { enabled: true } } },
+                    'row-2': { results: { show_live_support_chat: { enabled: false } } },
+                },
+            });
+        });
+
+        it('treats an unknown flag key as disabled within a group, mirroring evaluate()', async () => {
+            const out = await service.evaluateBatch('partner-frontend', [
+                { id: 'row-1', flagKeys: ['unknown-flag'], context: {} },
+            ]);
+
+            expect(out).toEqual({
+                results: {
+                    'row-1': { results: { 'unknown-flag': { enabled: false } } },
+                },
+            });
+        });
+
+        it('defaults to an empty context when a group omits it', async () => {
+            await service.create(
+                {
+                    projectKey: 'partner-frontend',
+                    key: 'always-on',
+                    enabled: true,
+                    rules: [],
+                },
+                'u1',
+            );
+
+            const out = await service.evaluateBatch('partner-frontend', [{ id: 'row-1', flagKeys: ['always-on'] }]);
+
+            expect(out).toEqual({
+                results: {
+                    'row-1': { results: { 'always-on': { enabled: true } } },
+                },
+            });
+        });
+
+        it('loads the runtime snapshot only once regardless of group count', async () => {
+            await service.create(
+                {
+                    projectKey: 'partner-frontend',
+                    key: 'always-on',
+                    enabled: true,
+                    rules: [],
+                },
+                'u1',
+            );
+
+            const spy = jest.spyOn(runtimeCache, 'loadOrRebuildSnapshotForEvaluate');
+
+            await service.evaluateBatch(
+                'partner-frontend',
+                Array.from({ length: 50 }, (_, i) => ({ id: `row-${i}`, flagKeys: ['always-on'], context: { id: i } })),
+            );
+
+            expect(spy).toHaveBeenCalledTimes(1);
         });
     });
 });
