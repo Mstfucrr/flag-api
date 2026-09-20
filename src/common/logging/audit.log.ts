@@ -13,6 +13,21 @@ export interface AuditLogInput {
     error_code?: string;
 }
 
+/**
+ * Tek satır JSON audit log (stdout).
+ *
+ * @param input - action, kategori, sonuç, isteğe bağlı http/user
+ *
+ * @example
+ * ```ts
+ * writeAuditLog({
+ *   event_action: 'resource.created',
+ *   event_category: 'configuration',
+ *   event_outcome: 'success',
+ *   resource_id: 'portal:new-checkout',
+ * })
+ * ```
+ */
 export function writeAuditLog(input: AuditLogInput): void {
     process.stdout.write(
         `${JSON.stringify({

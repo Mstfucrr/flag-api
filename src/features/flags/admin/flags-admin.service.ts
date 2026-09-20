@@ -1,29 +1,27 @@
 import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import type { FlagConditionRow } from './types/flag.types';
 import { CreateFlagDto } from './dto/create-flag.dto';
 import { UpdateFlagDto } from './dto/update-flag.dto';
-import type { FlagSnapshotModel } from '../../repository/flags/models/flag-snapshot.model';
 import {
     FLAGS_PERSISTENCE,
     type FlagAggregate,
     type IFlagsPersistence,
-} from '../../repository/flags/flags-persistence.repository';
-import { evaluateFlag } from '@core-sdk/feature-flags-core';
-import { RequestLogService } from '../../repository/request-log/request-log.service';
-import { canonicalRulesJson, diffChangedFields, freshTimestamp, projectFlagsResourceId } from './flags.service.utils';
-import { FeatureFlagRuntimeCacheService } from '../../repository/flags/cache/feature-flag-runtime-cache.service';
-import { writeAuditLog } from '../../common/logging/audit.log';
+} from '../../../repository/flags/flags-persistence.repository';
+import { RequestLogService } from '../../../repository/request-log/request-log.service';
+import { canonicalRulesJson, diffChangedFields, freshTimestamp, projectFlagsResourceId } from '../shared/flags.utils';
+import { FeatureFlagRuntimeCacheService } from '../../../repository/flags/cache/feature-flag-runtime-cache.service';
+import { writeAuditLog } from '../../../common/logging/audit.log';
+import { buildSnapshot, deepCloneSnapshot, toAdminCurrent } from '../shared/flag-mappers';
 
 /**
- * Feature flag yaşam döngüsü: oluşturma, okuma, güncelleme, silme, versiyon geçmişi,
- * rollback ve runtime değerlendirme. Kalıcılık {@link IFlagsPersistence} üzerinden;
- * denetim izi {@link RequestLogService} ile yazılır.
+ * Admin yüzü: oluşturma, güncelleme, silme, versiyon geçmişi, rollback.
+ * Kalıcılık {@link IFlagsPersistence} üzerinden; denetim izi {@link RequestLogService} ile yazılır.
  *
- * Admin okumaları doğrudan DB’den; Redis yalnızca SDK evaluate için aktif snapshot önbelleğidir.
+ * Admin okumaları doğrudan DB’den; Redis yalnızca mutasyon sonrası snapshot yenilemesi içindir.
+ * SDK evaluate {@link FlagsRuntimeService} üzerindedir.
  */
 @Injectable()
-export class FlagsService {
-    private readonly logger = new Logger(FlagsService.name);
+export class FlagsAdminService {
+    private readonly logger = new Logger(FlagsAdminService.name);
 
     constructor(
         @Inject(FLAGS_PERSISTENCE) private readonly flags: IFlagsPersistence,
@@ -31,7 +29,22 @@ export class FlagsService {
         private readonly runtimeCache: FeatureFlagRuntimeCacheService,
     ) {}
 
-    /** Yeni flag kaydı (v1); çakışan proje+key varsa {@link ConflictException}. */
+    /**
+     * Yeni flag oluşturur (v1); Redis ve audit güncellenir.
+     *
+     * @remarks
+     * Admin `POST /admin/projects/:projectKey/flags`. SDK bu metodu çağırmaz.
+     *
+     * @param dto - Proje, key, enabled, rules
+     * @param principalId - İşlemi yapan (audit)
+     * @returns Admin görünümü (kurallar + currentVersion)
+     * @throws {ConflictException} Aynı proje+key zaten varsa
+     *
+     * @example
+     * ```ts
+     * await create({ projectKey: 'portal', key: 'new-checkout', enabled: true, rules: [] }, 'ali')
+     * ```
+     */
     async create(dto: CreateFlagDto, principalId: string) {
         const projectKey = dto.projectKey.trim();
         const key = dto.key.trim();
@@ -40,7 +53,7 @@ export class FlagsService {
         }
         const now = freshTimestamp();
         const rules = dto.rules !== undefined ? dto.rules : [];
-        const snapshot = this.buildSnapshot({
+        const snapshot = buildSnapshot({
             key,
             description: dto.description ?? '',
             enabled: dto.enabled,
@@ -57,7 +70,7 @@ export class FlagsService {
             versions: [
                 {
                     version: 1,
-                    snapshot: this.deepCloneSnapshot(snapshot),
+                    snapshot: deepCloneSnapshot(snapshot),
                     createdAt: now,
                     createdBy: principalId,
                 },
@@ -85,26 +98,44 @@ export class FlagsService {
             resource_id: `${projectKey}:${key}`,
             user_id: principalId,
         });
-        return this.toAdminCurrent(aggregate);
-    }
-
-    /** SDK / hafif liste: projedeki flag’lerin sadece `key` bilgisi. */
-    async findAll(projectKey: string) {
-        const p = projectKey.trim();
-        const list = await this.flags.listByProject(p);
-        return list.map((a) => this.toRuntime(a));
-    }
-
-    /** Admin: projedeki tüm flag’lerin tam konfigürasyonu. */
-    async findAllAdmin(projectKey: string) {
-        const p = projectKey.trim();
-        const list = await this.flags.listByProject(p);
-        return list.map((a) => this.toAdminCurrent(a));
+        return toAdminCurrent(aggregate);
     }
 
     /**
-     * Projeye ait tüm flag kayıtlarını siler (DB + önbellek).
-     * Request log yazmaz.
+     * Admin listesi; kurallar ve versiyon no dahildir, snapshot geçmişi yoktur.
+     *
+     * @remarks
+     * `GET /admin/projects/:projectKey/flags`. DB’den okur, Redis kullanmaz.
+     *
+     * @param projectKey - Proje anahtarı
+     * @returns Tam güncel flag kayıtları
+     *
+     * @example
+     * ```ts
+     * await findAllAdmin('portal')
+     * // [{ key: 'new-checkout', enabled: true, currentVersion: 1, ... }]
+     * ```
+     */
+    async findAllAdmin(projectKey: string) {
+        const p = projectKey.trim();
+        const list = await this.flags.listByProject(p);
+        return list.map((a) => toAdminCurrent(a));
+    }
+
+    /**
+     * Projedeki tüm flag’leri DB ve Redis’ten siler (proje silinirken).
+     *
+     * @remarks
+     * `ProjectsService.removeProject` çağırır; ayrı HTTP ucu yok.
+     *
+     * @param projectKey - Proje anahtarı
+     * @returns Silinen flag key listesi; yoksa `[]`
+     *
+     * @example
+     * ```ts
+     * await purgeProjectFlags('portal')
+     * // ['new-checkout', 'chat']
+     * ```
      */
     async purgeProjectFlags(projectKey: string): Promise<string[]> {
         const pk = projectKey.trim();
@@ -121,89 +152,65 @@ export class FlagsService {
     }
 
     /**
-     * Manuel: DB’den runtime Redis önbelleğini yeniden kurar (Redis arızası sonrası iyileştirme).
+     * Redis snapshot’ı DB’den elle yeniden kurar.
+     *
+     * @remarks
+     * Admin `POST …/runtime-cache/refresh` (Redis felaketi sonrası).
+     *
+     * @param projectKey - Proje anahtarı
+     * @returns `{ ok: true, snapshot }` — evaluate dilimi
+     *
+     * @example
+     * ```ts
+     * await refreshRuntimeCacheManual('portal')
+     * ```
      */
     async refreshRuntimeCacheManual(projectKey: string) {
         return this.runtimeCache.refreshRuntimeCacheManual(projectKey.trim());
     }
 
     /**
-     * Verilen bağlamda birden fazla flag için `enabled` sonucu üretir
-     * (`@core-sdk/feature-flags-core` `evaluateFlag`).
+     * Admin tek flag okuma; kurallar ve versiyon dahildir.
+     *
+     * @remarks
+     * `GET /admin/projects/:projectKey/flags/:flagKey`. DB, Redis değil.
+     *
+     * @param projectKey - Proje anahtarı
+     * @param key - Flag anahtarı
+     * @returns Güncel admin kaydı (rules + currentVersion)
+     * @throws {NotFoundException} Flag yoksa
+     *
+     * @example
+     * ```ts
+     * await findOneAdmin('portal', 'new-checkout')
+     * ```
      */
-    async evaluate(projectKey: string, flagKeys: string[], context: Record<string, unknown> = {}) {
-        const p = projectKey.trim();
-        const results: Record<string, { enabled: boolean }> = {};
-        const snapshot = await this.runtimeCache.loadOrRebuildSnapshotForEvaluate(p);
-
-        for (const rawKey of flagKeys) {
-            const key = rawKey.trim();
-            if (!key) {
-                continue;
-            }
-            const slice = snapshot.byKey[key];
-            results[key] = {
-                enabled: slice !== undefined ? this.evaluateRuntimeEnabled(slice.enabled, slice.rules, context) : false,
-            };
-        }
-
-        return { results };
-    }
-
-    /**
-     * `evaluate` ile aynı değerlendirme mantığını, farklı bağlamlara sahip birden fazla
-     * grup için TEK snapshot yüklemesiyle çalıştırır (N ayrı HTTP isteği yerine 1 istek).
-     * Her grup kendi `context`'iyle değerlendirilir; sonuçlar istemcinin verdiği `id` ile eşlenir.
-     */
-    async evaluateBatch(
-        projectKey: string,
-        groups: { id: string; flagKeys: string[]; context?: Record<string, unknown> }[],
-    ) {
-        const p = projectKey.trim();
-        const snapshot = await this.runtimeCache.loadOrRebuildSnapshotForEvaluate(p);
-        const results: Record<string, { results: Record<string, { enabled: boolean }> }> = {};
-
-        for (const group of groups) {
-            const groupContext = group.context ?? {};
-            const groupResults: Record<string, { enabled: boolean }> = {};
-            for (const rawKey of group.flagKeys) {
-                const key = rawKey.trim();
-                if (!key) {
-                    continue;
-                }
-                const slice = snapshot.byKey[key];
-                groupResults[key] = {
-                    enabled:
-                        slice !== undefined
-                            ? this.evaluateRuntimeEnabled(slice.enabled, slice.rules, groupContext)
-                            : false,
-                };
-            }
-            results[group.id] = { results: groupResults };
-        }
-
-        return { results };
-    }
-
-    /** Tek flag, runtime şekli (yalnızca key). */
-    async findOne(projectKey: string, key: string) {
-        const agg = await this.flags.findByLookup(projectKey, key);
-        if (!agg) {
-            throw new NotFoundException(`Flag not found: ${key}`);
-        }
-        return this.toRuntime(agg);
-    }
-
-    /** Tek flag, admin şekli (kurallar + versiyon). */
     async findOneAdmin(projectKey: string, key: string) {
         const agg = await this.flags.findByLookup(projectKey, key);
         if (!agg) {
             throw new NotFoundException(`Flag not found: ${key}`);
         }
-        return this.toAdminCurrent(agg);
+        return toAdminCurrent(agg);
     }
 
-    /** Sadece `enabled` alanını günceller; değişiklik yoksa mevcut aggregate döner. */
+    /**
+     * Sadece aç/kapa; versiyon artırmaz.
+     *
+     * @remarks
+     * Admin `PATCH …/flags/:flagKey/enabled`.
+     *
+     * @param projectKey - Proje anahtarı
+     * @param flagKey - Flag anahtarı
+     * @param enabled - Yeni master durum
+     * @param principalId - İşlemi yapan (audit)
+     * @returns Güncel admin kaydı
+     * @throws {NotFoundException} Flag yoksa
+     *
+     * @example
+     * ```ts
+     * await setEnabled('portal', 'new-checkout', false, 'ali')
+     * ```
+     */
     async setEnabled(projectKey: string, flagKey: string, enabled: boolean, principalId: string) {
         const pk = projectKey.trim();
         const fk = flagKey.trim();
@@ -212,7 +219,7 @@ export class FlagsService {
             throw new NotFoundException(`Flag not found: ${fk}`);
         }
         if (agg.enabled === enabled) {
-            return this.toAdminCurrent(agg);
+            return toAdminCurrent(agg);
         }
         await this.flags.patchMetadata(pk, fk, { enabled }, agg.updatedAt);
         const refreshed = await this.flags.findByLookup(pk, fk);
@@ -238,12 +245,26 @@ export class FlagsService {
             resource_id: `${pk}:${fk}`,
             user_id: principalId,
         });
-        return this.toAdminCurrent(refreshed);
+        return toAdminCurrent(refreshed);
     }
 
     /**
-     * Tam güncelleme: kurallar / açıklama / master `enabled`.
-     * Kurallar değişmediyse sadece metadata patch + log; kurallar değiştiyse yeni versiyon.
+     * Flag günceller. Kural değişirse yeni versiyon; değilse sadece metadata.
+     *
+     * @remarks
+     * Admin `PUT …/flags/:flagKey`.
+     *
+     * @param projectKey - Proje anahtarı
+     * @param routeKey - Flag anahtarı
+     * @param dto - description / enabled / rules
+     * @param principalId - İşlemi yapan (audit)
+     * @returns Güncel admin kaydı
+     * @throws {NotFoundException} Flag yoksa
+     *
+     * @example
+     * ```ts
+     * await update('portal', 'new-checkout', { description: 'Yeni checkout' }, 'ali')
+     * ```
      */
     async update(projectKey: string, routeKey: string, dto: UpdateFlagDto, principalId: string) {
         const pk = projectKey.trim();
@@ -299,11 +320,11 @@ export class FlagsService {
                 resource_id: `${pk}:${routeKey}`,
                 user_id: principalId,
             });
-            return this.toAdminCurrent(refreshed);
+            return toAdminCurrent(refreshed);
         }
 
         if (!rulesChanged && !descChanged && !enabledChanged) {
-            return this.toAdminCurrent(agg);
+            return toAdminCurrent(agg);
         }
 
         const rules = dto.rules !== undefined ? dto.rules : agg.rules;
@@ -318,7 +339,7 @@ export class FlagsService {
             updatedAt: freshTimestamp(),
             versions: [...agg.versions],
         };
-        const snapshot = this.buildSnapshot({
+        const snapshot = buildSnapshot({
             key: next.key,
             description: next.description,
             enabled: next.enabled,
@@ -326,7 +347,7 @@ export class FlagsService {
         });
         next.versions.push({
             version: next.currentVersion,
-            snapshot: this.deepCloneSnapshot(snapshot),
+            snapshot: deepCloneSnapshot(snapshot),
             createdAt: next.updatedAt,
             createdBy: principalId,
         });
@@ -367,10 +388,26 @@ export class FlagsService {
             resource_id: `${pk}:${next.key}`,
             user_id: principalId,
         });
-        return this.toAdminCurrent(next);
+        return toAdminCurrent(next);
     }
 
-    /** Belirli versiyonun immutable snapshot’ı (geçmiş görüntüleme). */
+    /**
+     * Belirli bir versiyonun o anki kopyasını getirir.
+     *
+     * @remarks
+     * Admin `GET …/flags/:flagKey/versions/:version`.
+     *
+     * @param projectKey - Proje anahtarı
+     * @param key - Flag anahtarı
+     * @param version - Versiyon numarası
+     * @returns Snapshot + createdAt / createdBy
+     * @throws {NotFoundException} Flag veya versiyon yoksa
+     *
+     * @example
+     * ```ts
+     * await getVersionSnapshot('portal', 'new-checkout', 1)
+     * ```
+     */
     async getVersionSnapshot(projectKey: string, key: string, version: number) {
         const agg = await this.flags.findByLookup(projectKey, key);
         if (!agg) {
@@ -384,11 +421,27 @@ export class FlagsService {
             version: entry.version,
             createdAt: entry.createdAt,
             createdBy: entry.createdBy ?? '',
-            snapshot: this.deepCloneSnapshot(entry.snapshot),
+            snapshot: deepCloneSnapshot(entry.snapshot),
         };
     }
 
-    /** Versiyon listesi (yeniden eskiye sıralı). */
+    /**
+     * Flag versiyon geçmişini getirir (yeniden eskiye).
+     *
+     * @remarks
+     * Admin `GET …/flags/:flagKey/history`.
+     *
+     * @param projectKey - Proje anahtarı
+     * @param key - Flag anahtarı
+     * @returns `{ flagKey, versions[] }`
+     * @throws {NotFoundException} Flag yoksa
+     *
+     * @example
+     * ```ts
+     * await getHistory('portal', 'new-checkout')
+     * // { flagKey: 'new-checkout', versions: [v2, v1] }
+     * ```
+     */
     async getHistory(projectKey: string, key: string) {
         const agg = await this.flags.findByLookup(projectKey, key);
         if (!agg) {
@@ -401,7 +454,22 @@ export class FlagsService {
         };
     }
 
-    /** Flag’i kalıcıdan kaldırır ve silme logu yazar. */
+    /**
+     * Flag’i siler; Redis ve audit güncellenir.
+     *
+     * @remarks
+     * Admin `DELETE …/flags/:flagKey`.
+     *
+     * @param projectKey - Proje anahtarı
+     * @param key - Flag anahtarı
+     * @param principalId - İşlemi yapan (audit)
+     * @throws {NotFoundException} Flag yoksa
+     *
+     * @example
+     * ```ts
+     * await remove('portal', 'new-checkout', 'ali')
+     * ```
+     */
     async remove(projectKey: string, key: string, principalId: string) {
         const pk = projectKey.trim();
         const fk = key.trim();
@@ -427,8 +495,24 @@ export class FlagsService {
     }
 
     /**
-     * Hedef versiyonun snapshot’ını mevcut üzerine uygular; yeni bir versiyon numarası üretir
-     * (içerik eski sürüme döner, versiyon sayacı ilerler).
+     * Eski içeriği geri yükler; versiyon numarası yine artar.
+     *
+     * @remarks
+     * Admin `POST …/flags/:flagKey/rollback/:version`.
+     *
+     * @param projectKey - Proje anahtarı
+     * @param routeKey - Flag anahtarı
+     * @param targetVersion - Geri yüklenen versiyon
+     * @param principalId - İşlemi yapan (audit)
+     * @returns Yeni `currentVersion`’lı admin kaydı (içerik eski, numara yeni)
+     * @throws {NotFoundException} Flag yoksa
+     * @throws {BadRequestException} Hedef versiyon yoksa
+     *
+     * @example
+     * ```ts
+     * await rollback('portal', 'new-checkout', 1, 'ali')
+     * // currentVersion 3, içerik v1
+     * ```
      */
     async rollback(projectKey: string, routeKey: string, targetVersion: number, principalId: string) {
         const pk = projectKey.trim();
@@ -453,7 +537,7 @@ export class FlagsService {
             updatedAt: now,
             versions: [...agg.versions],
         };
-        const newSnapshot = this.buildSnapshot({
+        const newSnapshot = buildSnapshot({
             key: merged.key,
             description: merged.description,
             enabled: merged.enabled,
@@ -461,7 +545,7 @@ export class FlagsService {
         });
         merged.versions.push({
             version: merged.currentVersion,
-            snapshot: this.deepCloneSnapshot(newSnapshot),
+            snapshot: deepCloneSnapshot(newSnapshot),
             createdAt: now,
             createdBy: principalId,
         });
@@ -487,67 +571,6 @@ export class FlagsService {
             resource_id: `${pk}:${merged.key}`,
             user_id: principalId,
         });
-        return this.toAdminCurrent(merged);
-    }
-
-    /** Versiyon dizisine yazılacak anlık immutable görüntü. */
-    private buildSnapshot(p: {
-        key: string;
-        description: string;
-        enabled: boolean;
-        rules: FlagConditionRow[];
-    }): FlagSnapshotModel {
-        return {
-            key: p.key,
-            description: p.description,
-            enabled: p.enabled,
-            rules: structuredClone(p.rules),
-        };
-    }
-
-    /** Snapshot’ı serileştirme / dışarı sızdırmayı önlemek için derin kopya. */
-    private deepCloneSnapshot(s: FlagSnapshotModel): FlagSnapshotModel {
-        return structuredClone(s);
-    }
-
-    /**
-     * SDK / public GET yanıtı: yalnızca `key`.
-     * Gerçek `enabled` değeri POST …/evaluate + bağlam ile alınır.
-     */
-    private toRuntime(agg: FlagAggregate) {
-        return {
-            key: agg.key,
-        };
-    }
-
-    /** Admin API: proje, kurallar, güncel versiyon ve zaman damgası. */
-    private toAdminCurrent(agg: FlagAggregate) {
-        return {
-            projectKey: agg.projectKey,
-            key: agg.key,
-            description: agg.description,
-            enabled: agg.enabled,
-            rules: structuredClone(agg.rules),
-            currentVersion: agg.currentVersion,
-            updatedAt: agg.updatedAt,
-        };
-    }
-
-    /**
-     * Kalıcı kuralları SDK’nın `evaluateFlag` biçimine sarar;
-     * master `enabled` kapalıysa veya hiçbir koşul eşleşmezse false döner.
-     */
-    private evaluateRuntimeEnabled(
-        masterEnabled: boolean,
-        rules: FlagConditionRow[],
-        context: Record<string, unknown>,
-    ): boolean {
-        return evaluateFlag(
-            {
-                enabled: masterEnabled,
-                rules,
-            },
-            context,
-        ).enabled;
+        return toAdminCurrent(merged);
     }
 }

@@ -4,14 +4,15 @@ import flagsConfig from '../../../src/config/flags.config';
 import { RequestLogService } from '../../../src/repository/request-log/request-log.service';
 import { FeatureFlagRuntimeCacheService } from '../../../src/repository/flags/cache/feature-flag-runtime-cache.service';
 import { FLAGS_PERSISTENCE, type IFlagsPersistence } from '../../../src/repository/flags/flags-persistence.repository';
-import { FlagsSdkController } from '../../../src/features/flags/flags-sdk.controller';
-import { FlagsService } from '../../../src/features/flags/flags.service';
+import { FlagsSdkController } from '../../../src/features/flags/runtime/flags-sdk.controller';
+import { FlagsAdminService } from '../../../src/features/flags/admin/flags-admin.service';
+import { FlagsRuntimeService } from '../../../src/features/flags/runtime/flags-runtime.service';
 import { MemoryFlagsPersistence } from '../../../src/repository/flags/memory-flags-persistence';
 import { FiyuuThrottlerGuard } from '../../../src/common/throttling/fiyuu-throttler.guard';
 
 describe('FlagsSdkController', () => {
     let controller: FlagsSdkController;
-    let service: FlagsService;
+    let admin: FlagsAdminService;
 
     beforeEach(async () => {
         const moduleBuilder = Test.createTestingModule({
@@ -23,7 +24,8 @@ describe('FlagsSdkController', () => {
             ],
             controllers: [FlagsSdkController],
             providers: [
-                FlagsService,
+                FlagsAdminService,
+                FlagsRuntimeService,
                 { provide: FLAGS_PERSISTENCE, useClass: MemoryFlagsPersistence },
                 { provide: RequestLogService, useValue: { append: jest.fn() } },
                 {
@@ -54,7 +56,7 @@ describe('FlagsSdkController', () => {
             .compile();
 
         controller = module.get<FlagsSdkController>(FlagsSdkController);
-        service = module.get<FlagsService>(FlagsService);
+        admin = module.get(FlagsAdminService);
     });
 
     it('should be defined', () => {
@@ -62,8 +64,8 @@ describe('FlagsSdkController', () => {
     });
 
     describe('evaluateBatch', () => {
-        it('delegates to FlagsService.evaluateBatch and returns per-group results', async () => {
-            await service.create(
+        it('delegates to FlagsRuntimeService.evaluateBatch and returns per-group results', async () => {
+            await admin.create(
                 {
                     projectKey: 'acme',
                     key: 'x_flag',

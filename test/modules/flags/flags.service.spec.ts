@@ -4,7 +4,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { RequestLogService } from '../../../src/repository/request-log/request-log.service';
 import { FeatureFlagRuntimeCacheService } from '../../../src/repository/flags/cache/feature-flag-runtime-cache.service';
 import { FLAGS_PERSISTENCE, type IFlagsPersistence } from '../../../src/repository/flags/flags-persistence.repository';
-import { FlagsService } from '../../../src/features/flags/flags.service';
+import { FlagsAdminService } from '../../../src/features/flags/admin/flags-admin.service';
+import { FlagsRuntimeService } from '../../../src/features/flags/runtime/flags-runtime.service';
 import { MemoryFlagsPersistence } from '../../../src/repository/flags/memory-flags-persistence';
 
 const oneFilterCondition = (id: string, field: string, operator: RuleOperator, value: unknown, active = true) => ({
@@ -13,15 +14,17 @@ const oneFilterCondition = (id: string, field: string, operator: RuleOperator, v
     filters: [{ field, operator, value }],
 });
 
-describe('FlagsService', () => {
-    let service: FlagsService;
+describe('Flags admin/runtime services', () => {
+    let admin: FlagsAdminService;
+    let runtime: FlagsRuntimeService;
     let runtimeCache: FeatureFlagRuntimeCacheService;
     const mockRequestLog = { append: jest.fn().mockResolvedValue(undefined) };
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
-                FlagsService,
+                FlagsAdminService,
+                FlagsRuntimeService,
                 { provide: FLAGS_PERSISTENCE, useClass: MemoryFlagsPersistence },
                 { provide: RequestLogService, useValue: mockRequestLog },
                 {
@@ -47,17 +50,19 @@ describe('FlagsService', () => {
             ],
         }).compile();
 
-        service = module.get<FlagsService>(FlagsService);
+        admin = module.get(FlagsAdminService);
+        runtime = module.get(FlagsRuntimeService);
         runtimeCache = module.get<FeatureFlagRuntimeCacheService>(FeatureFlagRuntimeCacheService);
     });
 
     it('should be defined', () => {
-        expect(service).toBeDefined();
+        expect(admin).toBeDefined();
+        expect(runtime).toBeDefined();
     });
 
     describe('visibility', () => {
         it('runtime list exposes only evaluation-safe fields', async () => {
-            await service.create(
+            await admin.create(
                 {
                     projectKey: 'proj-safe',
                     key: 'chat',
@@ -67,7 +72,7 @@ describe('FlagsService', () => {
                 'u1',
             );
 
-            const [row] = await service.findAll('proj-safe');
+            const [row] = await runtime.findAll('proj-safe');
             expect(row).toEqual({
                 key: 'chat',
             });
@@ -78,7 +83,7 @@ describe('FlagsService', () => {
         });
 
         it('admin list exposes current metadata but not version snapshots by default', async () => {
-            await service.create(
+            await admin.create(
                 {
                     projectKey: 'proj-admin',
                     key: 'chat',
@@ -89,7 +94,7 @@ describe('FlagsService', () => {
                 'u1',
             );
 
-            const [row] = await service.findAllAdmin('proj-admin');
+            const [row] = await admin.findAllAdmin('proj-admin');
             expect(row).toMatchObject({
                 projectKey: 'proj-admin',
                 key: 'chat',
@@ -103,7 +108,7 @@ describe('FlagsService', () => {
 
     describe('getHistory', () => {
         it('returns versions with createdBy, no audit payload', async () => {
-            await service.create(
+            await admin.create(
                 {
                     projectKey: 'p',
                     key: 'f1',
@@ -112,7 +117,7 @@ describe('FlagsService', () => {
                 },
                 'alice',
             );
-            const h = await service.getHistory('p', 'f1');
+            const h = await admin.getHistory('p', 'f1');
             expect(h.flagKey).toBe('f1');
             expect(h).not.toHaveProperty('audit');
             expect(h.versions).toHaveLength(1);
@@ -125,7 +130,7 @@ describe('FlagsService', () => {
 
     describe('update', () => {
         it('description-only update does not bump version', async () => {
-            await service.create(
+            await admin.create(
                 {
                     projectKey: 'p',
                     key: 'immutable-key',
@@ -135,16 +140,16 @@ describe('FlagsService', () => {
                 },
                 'u1',
             );
-            const after = await service.update('p', 'immutable-key', { description: 'v2' }, 'u2');
+            const after = await admin.update('p', 'immutable-key', { description: 'v2' }, 'u2');
             expect(after.key).toBe('immutable-key');
             expect(after.description).toBe('v2');
             expect(after.currentVersion).toBe(1);
-            const h = await service.getHistory('p', 'immutable-key');
+            const h = await admin.getHistory('p', 'immutable-key');
             expect(h.versions).toHaveLength(1);
         });
 
         it('rule change bumps version', async () => {
-            await service.create(
+            await admin.create(
                 {
                     projectKey: 'p',
                     key: 'rule-bump',
@@ -154,7 +159,7 @@ describe('FlagsService', () => {
                 },
                 'u1',
             );
-            const after = await service.update(
+            const after = await admin.update(
                 'p',
                 'rule-bump',
                 {
@@ -168,7 +173,7 @@ describe('FlagsService', () => {
 
     describe('rollback', () => {
         it('restores snapshot fields but keeps aggregate key', async () => {
-            await service.create(
+            await admin.create(
                 {
                     projectKey: 'p',
                     key: 'roll-key',
@@ -178,8 +183,8 @@ describe('FlagsService', () => {
                 },
                 'u1',
             );
-            await service.update('p', 'roll-key', { description: 'b', rules: [] }, 'u2');
-            const rolled = await service.rollback('p', 'roll-key', 1, 'u3');
+            await admin.update('p', 'roll-key', { description: 'b', rules: [] }, 'u2');
+            const rolled = await admin.rollback('p', 'roll-key', 1, 'u3');
             expect(rolled.key).toBe('roll-key');
             expect(rolled.description).toBe('a');
             expect(rolled.rules).toHaveLength(1);
@@ -189,7 +194,7 @@ describe('FlagsService', () => {
 
     describe('setEnabled', () => {
         it('toggles enabled without new flag version', async () => {
-            await service.create(
+            await admin.create(
                 {
                     projectKey: 'p',
                     key: 'f1',
@@ -198,17 +203,17 @@ describe('FlagsService', () => {
                 },
                 'u1',
             );
-            const after = await service.setEnabled('p', 'f1', true, 'u2');
+            const after = await admin.setEnabled('p', 'f1', true, 'u2');
             expect(after.enabled).toBe(true);
             expect(after).toMatchObject({ key: 'f1', currentVersion: 1 });
-            const agg = await service.findOneAdmin('p', 'f1');
+            const agg = await admin.findOneAdmin('p', 'f1');
             expect(agg).toMatchObject({ enabled: true, currentVersion: 1 });
-            const h = await service.getHistory('p', 'f1');
+            const h = await admin.getHistory('p', 'f1');
             expect(h.versions).toHaveLength(1);
         });
 
         it('no-op when already in requested state', async () => {
-            await service.create(
+            await admin.create(
                 {
                     projectKey: 'p',
                     key: 'f2',
@@ -217,20 +222,20 @@ describe('FlagsService', () => {
                 },
                 'u1',
             );
-            const before = await service.findOneAdmin('p', 'f2');
-            const after = await service.setEnabled('p', 'f2', true, 'u2');
+            const before = await admin.findOneAdmin('p', 'f2');
+            const after = await admin.setEnabled('p', 'f2', true, 'u2');
             expect(after.enabled).toBe(true);
             expect(after).toEqual(before);
         });
 
         it('throws when flag missing', async () => {
-            await expect(service.setEnabled('p', 'missing', true, 'u1')).rejects.toThrow(NotFoundException);
+            await expect(admin.setEnabled('p', 'missing', true, 'u1')).rejects.toThrow(NotFoundException);
         });
     });
 
     describe('optimistic concurrency', () => {
         it('rejects a stale concurrent update with ConflictException, keeps the winner intact', async () => {
-            await service.create(
+            await admin.create(
                 {
                     projectKey: 'p',
                     key: 'race-key',
@@ -245,8 +250,8 @@ describe('FlagsService', () => {
             // başlangıç durumunu görüyor (aynı updatedAt). Biri kazanmalı, diğeri
             // ConflictException ile reddedilmeli — sessizce ezilmemeli.
             const outcomes = await Promise.allSettled([
-                service.update('p', 'race-key', { rules: [oneFilterCondition('r1', 'x', 'eq', 2)] }, 'client-A'),
-                service.update('p', 'race-key', { rules: [oneFilterCondition('r1', 'x', 'eq', 3)] }, 'client-B'),
+                admin.update('p', 'race-key', { rules: [oneFilterCondition('r1', 'x', 'eq', 2)] }, 'client-A'),
+                admin.update('p', 'race-key', { rules: [oneFilterCondition('r1', 'x', 'eq', 3)] }, 'client-B'),
             ]);
 
             const fulfilled = outcomes.filter((o) => o.status === 'fulfilled');
@@ -257,12 +262,12 @@ describe('FlagsService', () => {
 
             // Kaybeden isteğin verisi sessizce yazılmamış olmalı: kazananın son
             // hali korunmuş olmalı, iki değişikliğin karışımı değil.
-            const finalState = await service.findOneAdmin('p', 'race-key');
+            const finalState = await admin.findOneAdmin('p', 'race-key');
             expect(finalState.currentVersion).toBe(2);
         });
 
         it('preserves full version history across several sequential updates', async () => {
-            await service.create(
+            await admin.create(
                 {
                     projectKey: 'p',
                     key: 'hist-key',
@@ -272,21 +277,21 @@ describe('FlagsService', () => {
                 },
                 'u1',
             );
-            await service.update('p', 'hist-key', { rules: [oneFilterCondition('r1', 'x', 'eq', 2)] }, 'u2');
-            await service.update('p', 'hist-key', { rules: [oneFilterCondition('r1', 'x', 'eq', 3)] }, 'u3');
-            await service.update('p', 'hist-key', { rules: [oneFilterCondition('r1', 'x', 'eq', 4)] }, 'u4');
+            await admin.update('p', 'hist-key', { rules: [oneFilterCondition('r1', 'x', 'eq', 2)] }, 'u2');
+            await admin.update('p', 'hist-key', { rules: [oneFilterCondition('r1', 'x', 'eq', 3)] }, 'u3');
+            await admin.update('p', 'hist-key', { rules: [oneFilterCondition('r1', 'x', 'eq', 4)] }, 'u4');
 
-            const h = await service.getHistory('p', 'hist-key');
+            const h = await admin.getHistory('p', 'hist-key');
             expect(h.versions.map((v) => v.version).sort((a, b) => a - b)).toEqual([1, 2, 3, 4]);
 
-            const v1 = await service.getVersionSnapshot('p', 'hist-key', 1);
+            const v1 = await admin.getVersionSnapshot('p', 'hist-key', 1);
             expect(v1.snapshot.rules[0].filters[0].value).toBe(1);
         });
     });
 
     describe('evaluate', () => {
         it('returns only enabled result per key', async () => {
-            await service.create(
+            await admin.create(
                 {
                     projectKey: 'partner-frontend',
                     key: 'show_live_support_chat',
@@ -296,7 +301,7 @@ describe('FlagsService', () => {
                 'u1',
             );
 
-            const out = await service.evaluate('partner-frontend', ['show_live_support_chat', 'unknown-flag'], {
+            const out = await runtime.evaluate('partner-frontend', ['show_live_support_chat', 'unknown-flag'], {
                 accountId: '9742948',
             });
 
@@ -311,7 +316,7 @@ describe('FlagsService', () => {
 
     describe('evaluateBatch', () => {
         it('evaluates the same flag independently per group context, keyed by group id', async () => {
-            await service.create(
+            await admin.create(
                 {
                     projectKey: 'partner-frontend',
                     key: 'show_live_support_chat',
@@ -321,7 +326,7 @@ describe('FlagsService', () => {
                 'u1',
             );
 
-            const out = await service.evaluateBatch('partner-frontend', [
+            const out = await runtime.evaluateBatch('partner-frontend', [
                 { id: 'row-1', flagKeys: ['show_live_support_chat'], context: { accountId: '9742948' } },
                 { id: 'row-2', flagKeys: ['show_live_support_chat'], context: { accountId: 'someone-else' } },
             ]);
@@ -335,7 +340,7 @@ describe('FlagsService', () => {
         });
 
         it('treats an unknown flag key as disabled within a group, mirroring evaluate()', async () => {
-            const out = await service.evaluateBatch('partner-frontend', [
+            const out = await runtime.evaluateBatch('partner-frontend', [
                 { id: 'row-1', flagKeys: ['unknown-flag'], context: {} },
             ]);
 
@@ -347,7 +352,7 @@ describe('FlagsService', () => {
         });
 
         it('defaults to an empty context when a group omits it', async () => {
-            await service.create(
+            await admin.create(
                 {
                     projectKey: 'partner-frontend',
                     key: 'always-on',
@@ -357,7 +362,7 @@ describe('FlagsService', () => {
                 'u1',
             );
 
-            const out = await service.evaluateBatch('partner-frontend', [{ id: 'row-1', flagKeys: ['always-on'] }]);
+            const out = await runtime.evaluateBatch('partner-frontend', [{ id: 'row-1', flagKeys: ['always-on'] }]);
 
             expect(out).toEqual({
                 results: {
@@ -367,7 +372,7 @@ describe('FlagsService', () => {
         });
 
         it('loads the runtime snapshot only once regardless of group count', async () => {
-            await service.create(
+            await admin.create(
                 {
                     projectKey: 'partner-frontend',
                     key: 'always-on',
@@ -379,7 +384,7 @@ describe('FlagsService', () => {
 
             const spy = jest.spyOn(runtimeCache, 'loadOrRebuildSnapshotForEvaluate');
 
-            await service.evaluateBatch(
+            await runtime.evaluateBatch(
                 'partner-frontend',
                 Array.from({ length: 50 }, (_, i) => ({ id: `row-${i}`, flagKeys: ['always-on'], context: { id: i } })),
             );

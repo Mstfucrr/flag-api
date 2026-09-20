@@ -1,6 +1,6 @@
 import { ConflictException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { FlagsService } from '../../../src/features/flags/flags.service';
+import { FlagsAdminService } from '../../../src/features/flags/admin/flags-admin.service';
 import { RequestLogService } from '../../../src/repository/request-log/request-log.service';
 import { ProjectsService } from '../../../src/features/projects/projects.service';
 import { ProjectsRepository } from '../../../src/repository/projects/projects.repository';
@@ -14,7 +14,7 @@ describe('ProjectsService', () => {
         deleteByKey: jest.fn(),
     };
     const mockRequestLog = { append: jest.fn().mockResolvedValue(undefined) };
-    const mockFlagsService = {
+    const mockFlagsAdmin = {
         purgeProjectFlags: jest.fn().mockResolvedValue([]),
     };
 
@@ -25,7 +25,7 @@ describe('ProjectsService', () => {
                 ProjectsService,
                 { provide: ProjectsRepository, useValue: mockRepo },
                 { provide: RequestLogService, useValue: mockRequestLog },
-                { provide: FlagsService, useValue: mockFlagsService },
+                { provide: FlagsAdminService, useValue: mockFlagsAdmin },
             ],
         }).compile();
 
@@ -77,12 +77,12 @@ describe('ProjectsService', () => {
             createdAt: new Date(),
             updatedAt: new Date(),
         });
-        mockFlagsService.purgeProjectFlags.mockResolvedValue(['f1']);
+        mockFlagsAdmin.purgeProjectFlags.mockResolvedValue(['f1']);
         mockRepo.deleteByKey.mockResolvedValue(undefined);
 
         await service.removeProject('proj-x', 'alice');
 
-        expect(mockFlagsService.purgeProjectFlags).toHaveBeenCalledWith('proj-x');
+        expect(mockFlagsAdmin.purgeProjectFlags).toHaveBeenCalledWith('proj-x');
         expect(mockRepo.deleteByKey).toHaveBeenCalledWith('proj-x');
         expect(mockRequestLog.append).toHaveBeenCalledWith(
             expect.objectContaining({

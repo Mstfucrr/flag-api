@@ -1,4 +1,4 @@
-import type { FlagConditionRow } from '../../../features/flags/types/flag.types';
+import type { FlagConditionRow } from '../../../features/flags/shared/types/flag.types';
 
 /** Immutable flag state at a point in time */
 export class FlagSnapshotModel {

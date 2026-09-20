@@ -3,9 +3,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { FlagEntity } from '../../database/entities/flag.entity';
 import type { VersionEntryModel } from './models/version-entry.model';
-import type { FlagConditionRow } from '../../features/flags/types/flag.types';
+import type { FlagConditionRow } from '../../features/flags/shared/types/flag.types';
 import { FlagVersionEntity } from '../../database/entities/flag-version.entity';
-import { freshTimestamp } from '../../features/flags/flags.service.utils';
+import { freshTimestamp } from '../../features/flags/shared/flags.utils';
 
 /** Matches admin controller default when `x-principal-id` is missing. */
 function normalizeCreatedBy(createdBy: string | null | undefined): string {
@@ -22,7 +22,7 @@ function versionRowToModel(v: FlagVersionEntity): VersionEntryModel {
     };
 }
 
-/** Full flag row used by {@link FlagsService} (matches former in-memory aggregate). */
+/** Full flag row used by admin/runtime services (matches former in-memory aggregate). */
 export interface FlagAggregate {
     projectKey: string;
     key: string;
@@ -37,24 +37,144 @@ export interface FlagAggregate {
 export const FLAGS_PERSISTENCE = Symbol('FLAGS_PERSISTENCE');
 
 export interface IFlagsPersistence {
+    /**
+     * Tek flag’i proje ve key ile okur; versiyon geçmişi dahildir.
+     *
+     * @remarks
+     * Admin ve SDK okuma/mutasyon öncesi mevcut kaydı buradan alır
+     * (`findOne`, `setEnabled`, `update`, `getHistory`, `rollback`).
+     * Evaluate bu metodu kullanmaz; Redis snapshot’a gider.
+     *
+     * @param projectKey - Proje anahtarı
+     * @param flagKeyLookup - Flag anahtarı
+     * @returns Bulunduysa tam kayıt (kurallar + versions[]). Yoksa `null`; exception yok.
+     *
+     * @example
+     * ```ts
+     * await findByLookup('portal', 'new-checkout')
+     * ```
+     */
     findByLookup(projectKey: string, flagKeyLookup: string): Promise<FlagAggregate | null>;
+    /**
+     * Aynı proje içinde bu flag key’in var olup olmadığına bakar.
+     *
+     * @remarks
+     * `create` çakışma kontrolü, `remove` / `purgeProjectFlags` silmeden önce varlık kontrolü.
+     *
+     * @param projectKey - Proje anahtarı
+     * @param flagKey - Flag anahtarı
+     * @returns Varsa `true`, yoksa `false`.
+     *
+     * @example
+     * ```ts
+     * await existsByProjectAndFlagKey('portal', 'new-checkout')
+     * // true
+     * ```
+     */
     existsByProjectAndFlagKey(projectKey: string, flagKey: string): Promise<boolean>;
+    /**
+     * Projedeki tüm flag’leri listeler. Liste için versiyon satırları yüklenmez.
+     *
+     * @remarks
+     * SDK/admin liste (`findAll`, `findAllAdmin`), proje silerken `purgeProjectFlags`
+     * ve Redis snapshot rebuild (`rebuildRuntimeSnapshot`) buradan okur.
+     *
+     * @param projectKey - Proje anahtarı
+     * @returns Flag listesi; boş proje `[]`.
+     *
+     * @example
+     * ```ts
+     * await listByProject('portal')
+     * ```
+     */
     listByProject(projectKey: string): Promise<FlagAggregate[]>;
+    /**
+     * Verilen key listesine denk gelen flag’leri tek sorguda alır.
+     *
+     * @remarks
+     * Arayüzde hazır; şu an admin/runtime servisleri çağırmıyor. Evaluate Redis snapshot kullanır.
+     *
+     * @param projectKey - Proje anahtarı
+     * @param flagKeys - Aranan flag key’leri
+     * @returns `flagKey → kayıt` map’i; bulunamayan key’ler map’te yok.
+     *
+     * @example
+     * ```ts
+     * await findManyByProjectAndKeys('portal', ['new-checkout', 'chat'])
+     * ```
+     */
     findManyByProjectAndKeys(projectKey: string, flagKeys: string[]): Promise<Map<string, FlagAggregate>>;
+    /**
+     * Yeni flag ve ilk versiyon satırını yazar.
+     *
+     * @remarks
+     * Yalnızca `FlagsAdminService.create` çağırır; ardından runtime cache yenilenir.
+     *
+     * @param agg - v1 aggregate (proje, key, enabled, rules, versions)
+     *
+     * @example
+     * ```ts
+     * await insert({ projectKey: 'portal', key: 'new-checkout', enabled: true, rules: [] })
+     * ```
+     */
     insert(agg: FlagAggregate): Promise<void>;
     /**
-     * @param expectedUpdatedAt Okuma anında görülen `updatedAt` (ISO). DB'deki
-     * güncel değer bununla eşleşmiyorsa {@link ConflictException} fırlatılır
-     * (optimistic concurrency — flag arada başka biri tarafından değiştirilmiş).
+     * Flag’i tam günceller ve yeni versiyon satırı ekler.
+     *
+     * @remarks
+     * Kural değişen `update` ve `rollback` buraya yazar. Sadece açıklama/enabled
+     * değişirse {@link IFlagsPersistence.patchMetadata} kullanılır.
+     *
+     * @param agg - Yeni aggregate
+     * @param lookupFlagKey - Aranan mevcut flag key
+     * @param expectedUpdatedAt - Okuma anındaki `updatedAt`
+     * @throws {ConflictException} `updatedAt` uyuşmazsa (eşzamanlı yazım)
+     * @throws {NotFoundException} Satır yoksa
+     *
+     * @example
+     * ```ts
+     * await updateByLookup(agg, 'new-checkout', agg.updatedAt)
+     * ```
      */
     updateByLookup(agg: FlagAggregate, lookupFlagKey: string, expectedUpdatedAt: string): Promise<void>;
-    /** @param expectedUpdatedAt Bkz. {@link updateByLookup}. */
+    /**
+     * Sadece açıklama / enabled değiştirir; versiyon artırmaz.
+     *
+     * @remarks
+     * `setEnabled` ve kuralı değişmeyen `update` burayı kullanır.
+     *
+     * @param projectKey - Proje anahtarı
+     * @param flagKey - Flag anahtarı
+     * @param fields - Değişecek metadata
+     * @param expectedUpdatedAt - Okuma anındaki `updatedAt`
+     * @throws {ConflictException} `updatedAt` uyuşmazsa
+     * @throws {NotFoundException} Satır yoksa
+     *
+     * @example
+     * ```ts
+     * await patchMetadata('portal', 'new-checkout', { enabled: false }, updatedAt)
+     * ```
+     */
     patchMetadata(
         projectKey: string,
         flagKey: string,
         fields: { description?: string; enabled?: boolean },
         expectedUpdatedAt: string,
     ): Promise<void>;
+    /**
+     * Flag satırını (cascade ile versiyonlarını) siler.
+     *
+     * @remarks
+     * `remove` tek flag, `purgeProjectFlags` proje silinirken tüm flag’ler için çağırır.
+     *
+     * @param projectKey - Proje anahtarı
+     * @param flagKey - Flag anahtarı
+     *
+     * @example
+     * ```ts
+     * await delete('portal', 'new-checkout')
+     * ```
+     */
     delete(projectKey: string, flagKey: string): Promise<void>;
 }
 

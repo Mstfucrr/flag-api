@@ -30,6 +30,17 @@ export class HealthService {
         private readonly config: ConfigService,
     ) {}
 
+    /**
+     * Postgres ve Redis sağlık özeti.
+     *
+     * @returns `{ status, checks }`. DB down ise `error`; Redis down ise `degraded`.
+     *
+     * @example
+     * ```ts
+     * await check()
+     * // { status: 'ok', checks: { database: { status: 'up' }, redis: { status: 'disabled' } } }
+     * ```
+     */
     async check(): Promise<HealthResult> {
         const [database, redis] = await Promise.all([this.checkDatabase(), this.checkRedis()]);
 

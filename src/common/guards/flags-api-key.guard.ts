@@ -12,6 +12,16 @@ import type { Request } from 'express';
 export class FlagsApiKeyGuard implements CanActivate {
     constructor(private readonly config: ConfigService) {}
 
+    /**
+     * `X-Api-Key` başlığını `FLAGS_API_KEY` ile karşılaştırır.
+     *
+     * @param context - Nest execution context
+     * @returns Geçerliyse `true`
+     * @throws {UnauthorizedException} Başlık yok veya yanlışsa
+     *
+     * @example
+     * Header `X-Api-Key: local-dev-only-change-me`
+     */
     canActivate(context: ExecutionContext): boolean {
         const expected = (this.config.get<string>('flags.apiKey') ?? '').trim();
 

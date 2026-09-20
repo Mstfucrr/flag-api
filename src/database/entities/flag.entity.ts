@@ -1,4 +1,4 @@
-import type { FlagConditionRow } from '../../features/flags/types/flag.types';
+import type { FlagConditionRow } from '../../features/flags/shared/types/flag.types';
 import { Column, Entity, OneToMany, PrimaryGeneratedColumn, Unique } from 'typeorm';
 import { FlagVersionEntity } from './flag-version.entity';
 

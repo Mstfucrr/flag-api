@@ -35,6 +35,21 @@ export class RequestLogService {
         private readonly repo: Repository<RequestLogEntity>,
     ) {}
 
+    /**
+     * Audit satırı yazar. DB hatası isteği düşürmez, loglar.
+     *
+     * @param input - resourceId, principalId, action, request
+     *
+     * @example
+     * ```ts
+     * await append({
+     *   resourceId: '/feature-flags/projects/portal',
+     *   principalId: 'ali',
+     *   action: 'create-flag',
+     *   request: { flagKey: 'new-checkout' },
+     * })
+     * ```
+     */
     async append(input: RequestLogAppendInput): Promise<void> {
         const row = this.repo.create({
             id: randomUUID(),
@@ -55,7 +70,17 @@ export class RequestLogService {
         }
     }
 
-    /** Sabit sayfa boyutlu (offset) sayfalama — cursor'suz, yön belirsizliği yok. */
+    /**
+     * Bir kaynağın audit kayıtlarını sayfalı getirir.
+     *
+     * @param dto - resourceId, page, pageSize, descending
+     * @returns `{ items, page, pageSize, total, totalPages }`
+     *
+     * @example
+     * ```ts
+     * await query({ resourceId: '/feature-flags/projects/portal', page: 1, pageSize: 10 })
+     * ```
+     */
     async query(dto: QueryRequestLogsDto): Promise<{
         items: Record<string, unknown>[];
         page: number;

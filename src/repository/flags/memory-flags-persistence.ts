@@ -1,8 +1,8 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { FlagAggregate, IFlagsPersistence } from './flags-persistence.repository';
-import { freshTimestamp } from '../../features/flags/flags.service.utils';
+import { freshTimestamp } from '../../features/flags/shared/flags.utils';
 
-/** In-memory store for unit tests (no PostgreSQL). */
+/** Unit test için RAM’de {@link IFlagsPersistence}; Postgres yok. */
 @Injectable()
 export class MemoryFlagsPersistence implements IFlagsPersistence {
     private readonly map = new Map<string, FlagAggregate>();

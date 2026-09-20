@@ -53,10 +53,12 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         this.client = null;
     }
 
+    /** Redis açık ve bağlantı hazır mı. */
     isReady(): boolean {
         return this.enabled && this.client?.isOpen === true;
     }
 
+    /** Redis PING; kapalıysa veya hata varsa `false`. */
     async ping(): Promise<boolean> {
         if (!this.isReady()) {
             return false;
@@ -74,6 +76,17 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         return `${this.keyPrefix}${raw}`;
     }
 
+    /**
+     * JSON get. Prefix otomatik eklenir.
+     *
+     * @param key - Mantıksal anahtar
+     * @returns Parse edilmiş değer veya yoksa / Redis kapalıysa `null`
+     *
+     * @example
+     * ```ts
+     * await get('ff:runtime:flags:portal')
+     * ```
+     */
     async get<T>(key: string): Promise<T | null> {
         if (!this.isReady()) {
             return null;
@@ -90,6 +103,18 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         }
     }
 
+    /**
+     * JSON set. `ttlSeconds > 0` ise EXPIRE uygulanır. Redis kapalıysa no-op.
+     *
+     * @param key - Mantıksal anahtar
+     * @param value - Saklanacak değer
+     * @param ttlSeconds - 0 = süresiz
+     *
+     * @example
+     * ```ts
+     * await set('ff:runtime:flags:portal', snapshot, 0)
+     * ```
+     */
     async set<T>(key: string, value: T, ttlSeconds: number): Promise<void> {
         if (!this.isReady()) {
             return;
@@ -106,6 +131,16 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         }
     }
 
+    /**
+     * Anahtar siler. Redis kapalıysa no-op.
+     *
+     * @param key - Mantıksal anahtar
+     *
+     * @example
+     * ```ts
+     * await del('ff:runtime:flags:portal')
+     * ```
+     */
     async del(key: string): Promise<void> {
         if (!this.isReady()) {
             return;
@@ -118,7 +153,16 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     }
 
     /**
-     * Atomik sayaç (runtime sürümü için). Redis kapalıysa null.
+     * Atomik sayaç (runtime sürümü). Redis kapalıysa `null`.
+     *
+     * @param key - Sayacın anahtarı
+     * @returns Yeni değer veya `null`
+     *
+     * @example
+     * ```ts
+     * await incr('ff:runtime:version:portal')
+     * // 4
+     * ```
      */
     async incr(key: string): Promise<number | null> {
         if (!this.isReady()) {
@@ -133,8 +177,14 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     }
 
     /**
-     * Glob benzeri desene uyan anahtarları siler (`MATCH` ile SCAN).
-     * `pattern` mantıksal anahtardır; `keyPrefix` otomatik eklenir.
+     * Glob desene uyan anahtarları siler (`SCAN MATCH`). Prefix otomatik eklenir.
+     *
+     * @param pattern - Mantıksal glob, örn. `ff:runtime:flags:*`
+     *
+     * @example
+     * ```ts
+     * await delByPattern('ff:runtime:flags:*')
+     * ```
      */
     async delByPattern(pattern: string): Promise<void> {
         if (!this.isReady()) {

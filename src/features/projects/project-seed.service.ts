@@ -14,6 +14,9 @@ export class ProjectSeedService implements OnModuleInit {
         private readonly projectsService: ProjectsService,
     ) {}
 
+    /**
+     * Geliştirmede yoksa `portal` projesini oluşturur.
+     */
     async onModuleInit(): Promise<void> {
         if (process.env.NODE_ENV !== 'development') {
             return;

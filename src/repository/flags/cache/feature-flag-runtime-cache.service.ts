@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { FlagConditionRow } from '../../../features/flags/types/flag.types';
+import type { FlagConditionRow } from '../../../features/flags/shared/types/flag.types';
 import type { FlagAggregate } from '../flags-persistence.repository';
 import { FlagsPersistenceRepository } from '../flags-persistence.repository';
 import { RedisCacheService } from '../../redis/redis-cache.service';
@@ -39,16 +39,56 @@ export class FeatureFlagRuntimeCacheService {
         private readonly flagsRepo: FlagsPersistenceRepository,
     ) {}
 
-    /** Redis’teki anlık görüntü (yoksa null). */
+    /**
+     * Redis’teki evaluate snapshot’ını okur.
+     *
+     * @remarks
+     * `loadOrRebuildSnapshotForEvaluate` önce buraya bakar. Admin okumaları Redis kullanmaz.
+     *
+     * @param projectKey - Proje anahtarı
+     * @returns Snapshot veya miss / Redis kapalıysa `null`
+     *
+     * @example
+     * ```ts
+     * await getRuntimeSnapshot('portal')
+     * ```
+     */
     async getRuntimeSnapshot(projectKey: string): Promise<RuntimeFlagsSnapshot | null> {
         return this.redisCache.getJson<RuntimeFlagsSnapshot>(runtimeFlagsKey(projectKey));
     }
 
+    /**
+     * Snapshot’ı Redis’e yazar (TTL yok).
+     *
+     * @remarks
+     * Mutasyon sonrası yenileme ve cache-miss rebuild bu metodu doldurur.
+     *
+     * @param projectKey - Proje anahtarı
+     * @param snapshot - Evaluate dilimi
+     *
+     * @example
+     * ```ts
+     * await setRuntimeSnapshot('portal', snapshot)
+     * ```
+     */
     async setRuntimeSnapshot(projectKey: string, snapshot: RuntimeFlagsSnapshot): Promise<void> {
         await this.redisCache.setJson(runtimeFlagsKey(projectKey), snapshot, 0);
     }
 
-    /** DB’den projeyi okuyup ince snapshot üretir (Redis yazmaz). */
+    /**
+     * DB’den evaluate dilimini üretir; Redis’e yazmaz.
+     *
+     * @remarks
+     * Cache miss ve admin yazımı sonrası rebuild. Versiyon geçmişi snapshot’a girmez.
+     *
+     * @param projectKey - Proje anahtarı
+     * @returns `{ builtAt, byKey }` — versiyon geçmişi yok
+     *
+     * @example
+     * ```ts
+     * await rebuildRuntimeSnapshot('portal')
+     * ```
+     */
     async rebuildRuntimeSnapshot(projectKey: string): Promise<RuntimeFlagsSnapshot> {
         const rows = await this.flagsRepo.listByProject(projectKey);
         return this.toSnapshot(rows);
@@ -65,7 +105,19 @@ export class FeatureFlagRuntimeCacheService {
         return { builtAt: new Date().toISOString(), byKey };
     }
 
-    /** Mutasyon sonrası sürüm sayacı (+1). Redis kapalıysa sessizce atlanır. */
+    /**
+     * Cache versiyon sayacını +1 yapar. Redis yoksa sessizce geçer.
+     *
+     * @remarks
+     * `refreshRuntimeCacheAfterMutation` içinde snapshot yazımından sonra çağrılır.
+     *
+     * @param projectKey - Proje anahtarı
+     *
+     * @example
+     * ```ts
+     * await bumpRuntimeVersion('portal')
+     * ```
+     */
     async bumpRuntimeVersion(projectKey: string): Promise<void> {
         const n = await this.redisCache.incr(runtimeVersionKey(projectKey));
         if (n === null) {
@@ -74,8 +126,17 @@ export class FeatureFlagRuntimeCacheService {
     }
 
     /**
-     * Admin yazma işleminden sonra: DB kaydı tamam → snapshot yenile → sürüm artır.
-     * Redis hatası üretimi bozmaz; sadece loglanır.
+     * Admin yazımından sonra Redis’i DB ile hizalar. Redis hatası isteği düşürmez.
+     *
+     * @remarks
+     * `create` / `update` / `setEnabled` / `remove` / `rollback` DB kaydından sonra çağırır.
+     *
+     * @param projectKey - Proje anahtarı
+     *
+     * @example
+     * ```ts
+     * await refreshRuntimeCacheAfterMutation('portal')
+     * ```
      */
     async refreshRuntimeCacheAfterMutation(projectKey: string): Promise<void> {
         const pk = projectKey.trim();
@@ -89,7 +150,18 @@ export class FeatureFlagRuntimeCacheService {
     }
 
     /**
-     * Evaluate için: önce Redis; cache miss → DB’den üret ve Redis’e yaz (sürüm artışı yok).
+     * Evaluate için snapshot getirir; yoksa DB’den kurar.
+     *
+     * @remarks
+     * SDK `evaluate` ve `evaluateBatch` tek giriş noktası. Admin GET burayı kullanmaz.
+     *
+     * @param projectKey - Proje anahtarı
+     * @returns Redis hit veya DB’den üretilmiş snapshot
+     *
+     * @example
+     * ```ts
+     * await loadOrRebuildSnapshotForEvaluate('portal')
+     * ```
      */
     async loadOrRebuildSnapshotForEvaluate(projectKey: string): Promise<RuntimeFlagsSnapshot> {
         const pk = projectKey.trim();
@@ -120,7 +192,19 @@ export class FeatureFlagRuntimeCacheService {
         return snap;
     }
 
-    /** Proje silindiğinde veya tüm bayraklar silindiğinde runtime anahtarlarını kaldırır. */
+    /**
+     * Projenin Redis runtime anahtarlarını siler.
+     *
+     * @remarks
+     * Proje silinirken `purgeProjectFlags` çağırır.
+     *
+     * @param projectKey - Proje anahtarı
+     *
+     * @example
+     * ```ts
+     * await clearProjectRuntime('portal')
+     * ```
+     */
     async clearProjectRuntime(projectKey: string): Promise<void> {
         const pk = projectKey.trim();
         try {
@@ -132,7 +216,18 @@ export class FeatureFlagRuntimeCacheService {
     }
 
     /**
-     * Elle iyileştirme: mutasyon sonrası ile aynı yenileme akışı (DB → Redis → sürüm).
+     * Felaket kurtarma: cache’i DB’den yeniden kurar.
+     *
+     * @remarks
+     * Admin `POST …/runtime-cache/refresh` ucu. Normal yazım yolu `refreshRuntimeCacheAfterMutation`.
+     *
+     * @param projectKey - Proje anahtarı
+     * @returns `{ ok: true, snapshot }`
+     *
+     * @example
+     * ```ts
+     * await refreshRuntimeCacheManual('portal')
+     * ```
      */
     async refreshRuntimeCacheManual(projectKey: string): Promise<{
         ok: boolean;

@@ -18,10 +18,10 @@ import { CreateFlagBodyDto } from './dto/create-flag-body.dto';
 import { CreateFlagDto } from './dto/create-flag.dto';
 import { SetFlagEnabledBodyDto } from './dto/set-flag-enabled-body.dto';
 import { UpdateFlagDto } from './dto/update-flag.dto';
-import { FlagsService } from './flags.service';
-import { FlagsApiKeyGuard } from '../../common/guards/flags-api-key.guard';
-import { FiyuuThrottlerGuard } from '../../common/throttling/fiyuu-throttler.guard';
-import { ApiRateLimitExceeded } from '../../common/throttling/throttling.swagger';
+import { FlagsAdminService } from './flags-admin.service';
+import { FlagsApiKeyGuard } from '../../../common/guards/flags-api-key.guard';
+import { FiyuuThrottlerGuard } from '../../../common/throttling/fiyuu-throttler.guard';
+import { ApiRateLimitExceeded } from '../../../common/throttling/throttling.swagger';
 
 @ApiTags('flags-admin')
 @ApiRateLimitExceeded()
@@ -29,7 +29,7 @@ import { ApiRateLimitExceeded } from '../../common/throttling/throttling.swagger
 @UseGuards(FlagsApiKeyGuard, FiyuuThrottlerGuard)
 @Controller('admin/projects/:projectKey/flags')
 export class FlagsAdminController {
-    constructor(private readonly flagsService: FlagsService) {}
+    constructor(private readonly flagsAdmin: FlagsAdminService) {}
 
     /** Redis runtime önbelleğini DB ile yeniden hizalar (felaket kurtarma). */
     @Post('runtime-cache/refresh')
@@ -40,7 +40,7 @@ export class FlagsAdminController {
     })
     @ApiParam({ name: 'projectKey' })
     refreshRuntimeCache(@Param('projectKey') projectKey: string) {
-        return this.flagsService.refreshRuntimeCacheManual(projectKey);
+        return this.flagsAdmin.refreshRuntimeCacheManual(projectKey);
     }
 
     @Post(':flagKey/rollback/:version')
@@ -57,7 +57,7 @@ export class FlagsAdminController {
         @Headers('x-principal-id') xPrincipalId?: string,
     ) {
         const principalId = xPrincipalId?.trim() || 'system';
-        return this.flagsService.rollback(projectKey, flagKey, version, principalId);
+        return this.flagsAdmin.rollback(projectKey, flagKey, version, principalId);
     }
 
     @Post()
@@ -77,7 +77,7 @@ export class FlagsAdminController {
             enabled: body.enabled,
             rules: body.rules,
         };
-        return this.flagsService.create(dto, principalId);
+        return this.flagsAdmin.create(dto, principalId);
     }
 
     @Get(':flagKey/history')
@@ -87,7 +87,7 @@ export class FlagsAdminController {
     @ApiParam({ name: 'projectKey' })
     @ApiParam({ name: 'flagKey' })
     history(@Param('projectKey') projectKey: string, @Param('flagKey') flagKey: string) {
-        return this.flagsService.getHistory(projectKey, flagKey);
+        return this.flagsAdmin.getHistory(projectKey, flagKey);
     }
 
     @Get(':flagKey/versions/:version')
@@ -100,7 +100,7 @@ export class FlagsAdminController {
         @Param('flagKey') flagKey: string,
         @Param('version', ParseIntPipe) version: number,
     ) {
-        return this.flagsService.getVersionSnapshot(projectKey, flagKey, version);
+        return this.flagsAdmin.getVersionSnapshot(projectKey, flagKey, version);
     }
 
     @Patch(':flagKey/enabled')
@@ -118,7 +118,7 @@ export class FlagsAdminController {
         @Headers('x-principal-id') xPrincipalId?: string,
     ) {
         const principalId = xPrincipalId?.trim() || 'system';
-        return this.flagsService.setEnabled(projectKey, flagKey, body.enabled, principalId);
+        return this.flagsAdmin.setEnabled(projectKey, flagKey, body.enabled, principalId);
     }
 
     @Put(':flagKey')
@@ -133,7 +133,7 @@ export class FlagsAdminController {
         @Headers('x-principal-id') xPrincipalId?: string,
     ) {
         const principalId = xPrincipalId?.trim() || 'system';
-        return this.flagsService.update(projectKey, flagKey, dto, principalId);
+        return this.flagsAdmin.update(projectKey, flagKey, dto, principalId);
     }
 
     @Delete(':flagKey')
@@ -148,7 +148,7 @@ export class FlagsAdminController {
         @Headers('x-principal-id') xPrincipalId?: string,
     ) {
         const principalId = xPrincipalId?.trim() || 'system';
-        await this.flagsService.remove(projectKey, flagKey, principalId);
+        await this.flagsAdmin.remove(projectKey, flagKey, principalId);
     }
 
     @Get(':flagKey')
@@ -156,13 +156,13 @@ export class FlagsAdminController {
     @ApiParam({ name: 'projectKey' })
     @ApiParam({ name: 'flagKey' })
     one(@Param('projectKey') projectKey: string, @Param('flagKey') flagKey: string) {
-        return this.flagsService.findOneAdmin(projectKey, flagKey);
+        return this.flagsAdmin.findOneAdmin(projectKey, flagKey);
     }
 
     @Get()
     @ApiOperation({ summary: 'List current flags for admin UI' })
     @ApiParam({ name: 'projectKey' })
     list(@Param('projectKey') projectKey: string) {
-        return this.flagsService.findAllAdmin(projectKey);
+        return this.flagsAdmin.findAllAdmin(projectKey);
     }
 }

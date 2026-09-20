@@ -1,7 +1,7 @@
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { THROTTLER_LIMIT, THROTTLER_TTL } from '@nestjs/throttler/dist/throttler.constants';
-import { FlagsAdminController } from '../../../../src/features/flags/flags-admin.controller';
-import { FlagsSdkController } from '../../../../src/features/flags/flags-sdk.controller';
+import { FlagsAdminController } from '../../../../src/features/flags/admin/flags-admin.controller';
+import { FlagsSdkController } from '../../../../src/features/flags/runtime/flags-sdk.controller';
 import { HealthController } from '../../../../src/features/health/health.controller';
 import { ProjectsController } from '../../../../src/features/projects/projects.controller';
 import { RequestLogController } from '../../../../src/features/request-log/request-log.controller';

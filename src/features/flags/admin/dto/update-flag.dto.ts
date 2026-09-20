@@ -1,7 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsArray, IsBoolean, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
-import { FlagConditionRowDto } from './flag-condition.dto';
+import { FlagConditionRowDto } from '../../shared/dto/flag-condition.dto';
 
 export class UpdateFlagDto {
     @ApiPropertyOptional({

@@ -62,7 +62,10 @@ pnpm run start:dev     # sadece uygulama (altyapı zaten ayakta olmalı)
 src/
 ├── config/                     # Ortam değişkeni okuma (@nestjs/config tabanlı — bkz. Mimari istisnalar)
 ├── features/                   # Domain modülleri (controller + service + dto)
-│   ├── flags/                  # Runtime + admin flag uçları, versiyon/rollback iş mantığı
+│   ├── flags/                  # Flag domain — iki yüz, aynı HTTP path’ler
+│   │   ├── runtime/            # SDK evaluate / key list (`/projects/:projectKey/flags`)
+│   │   ├── admin/              # CRUD, history, rollback (`/admin/projects/.../flags`)
+│   │   └── shared/             # Tipler, DTO, mapper, utils
 │   ├── projects/               # Proje CRUD, dev-only seed
 │   ├── request-log/            # Audit log sorgulama ucu
 │   └── health/                 # /health
