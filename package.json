@@ -35,7 +35,7 @@
         "prettier": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\""
     },
     "dependencies": {
-        "@core-sdk/feature-flags-core": "^0.6.1",
+        "@core-sdk/feature-flags-core": "^0.7.0",
         "@instana/collector": "^6.2.1",
         "@nestjs/common": "^11.1.19",
         "@nestjs/config": "^4.0.4",

@@ -1,7 +1,18 @@
 import { RULE_OPERATORS, type RuleOperator } from '@core-sdk/feature-flags-core';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { Allow, ArrayMinSize, IsArray, IsBoolean, IsIn, IsOptional, IsString, ValidateNested } from 'class-validator';
+import {
+    Allow,
+    ArrayMinSize,
+    IsArray,
+    IsBoolean,
+    IsIn,
+    IsOptional,
+    IsString,
+    Validate,
+    ValidateNested,
+} from 'class-validator';
+import { PercentageFiltersConstraint } from './percentage-filters.validator';
 
 const OPERATOR_ENUM = RULE_OPERATORS as readonly RuleOperator[];
 
@@ -51,5 +62,6 @@ export class FlagConditionRowDto {
     @ArrayMinSize(1)
     @ValidateNested({ each: true })
     @Type(() => FlagFilterRowDto)
+    @Validate(PercentageFiltersConstraint)
     filters!: FlagFilterRowDto[];
 }

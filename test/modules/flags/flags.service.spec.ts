@@ -392,4 +392,82 @@ describe('Flags admin/runtime services', () => {
             expect(spy).toHaveBeenCalledTimes(1);
         });
     });
+
+    describe('percentage rollout', () => {
+        const percentageRule = (field: string, percent: number) => ({
+            id: 'rollout',
+            active: true,
+            filters: [{ field, operator: 'percentage' as RuleOperator, value: percent }],
+        });
+        const users = (n: number) => Array.from({ length: n }, (_, i) => `user-${i}`);
+        const enabledUsers = async (flagKey: string, ids: string[], field = 'userId') => {
+            const out = await runtime.evaluateBatch(
+                'rollout-proj',
+                ids.map((id) => ({ id, flagKeys: [flagKey], context: { [field]: id } })),
+            );
+            return ids.filter((id) => out.results[id].results[flagKey].enabled);
+        };
+        const createRollout = (key: string, percent: number, field = 'userId') =>
+            admin.create(
+                { projectKey: 'rollout-proj', key, enabled: true, rules: [percentageRule(field, percent)] },
+                'u1',
+            );
+
+        it('opens for the requested share of users (flag key is passed to the hash)', async () => {
+            await createRollout('gradual', 20);
+            const ids = users(5000);
+            const share = (await enabledUsers('gradual', ids)).length / ids.length;
+            expect(share).toBeGreaterThan(0.18);
+            expect(share).toBeLessThan(0.22);
+        });
+
+        it('keeps anonymous callers off, even at 100%', async () => {
+            await createRollout('everyone', 100);
+            const withUser = await runtime.evaluate('rollout-proj', ['everyone'], { userId: 'u-1' });
+            const anonymous = await runtime.evaluate('rollout-proj', ['everyone'], {});
+            expect(withUser.results.everyone.enabled).toBe(true);
+            expect(anonymous.results.everyone.enabled).toBe(false);
+        });
+
+        it('gives the same answer from evaluate and evaluateBatch', async () => {
+            await createRollout('same-answer', 50);
+            const ids = users(200);
+            const batch = new Set(await enabledUsers('same-answer', ids));
+            for (const id of ids) {
+                const single = await runtime.evaluate('rollout-proj', ['same-answer'], { userId: id });
+                expect(single.results['same-answer'].enabled).toBe(batch.has(id));
+            }
+        });
+
+        it('selects different cohorts for different flags with the same rule', async () => {
+            await createRollout('flag-a', 20);
+            await createRollout('flag-b', 20);
+            const ids = users(5000);
+            const a = new Set(await enabledUsers('flag-a', ids));
+            const b = await enabledUsers('flag-b', ids);
+            const overlap = b.filter((id) => a.has(id)).length / ids.length;
+            // Bağımsız iki %20 kümesinin kesişimi ≈ %4; aynı küme olsaydı ≈ %20 olurdu.
+            expect(overlap).toBeGreaterThan(0.01);
+            expect(overlap).toBeLessThan(0.08);
+        });
+
+        it('keeps the earlier cohort when the percentage is raised through an update', async () => {
+            await createRollout('grow', 20);
+            const ids = users(2000);
+            const before = await enabledUsers('grow', ids);
+            await admin.update('rollout-proj', 'grow', { rules: [percentageRule('userId', 40)] }, 'u2');
+            const after = new Set(await enabledUsers('grow', ids));
+            expect(before.length).toBeGreaterThan(0);
+            for (const id of before) expect(after.has(id)).toBe(true);
+            expect(after.size).toBeGreaterThan(before.length);
+        });
+
+        it('buckets by the configured field, e.g. restoranId', async () => {
+            await createRollout('per-restaurant', 100, 'restoranId');
+            const byRestaurant = await runtime.evaluate('rollout-proj', ['per-restaurant'], { restoranId: 'r-1' });
+            const byUserOnly = await runtime.evaluate('rollout-proj', ['per-restaurant'], { userId: 'r-1' });
+            expect(byRestaurant.results['per-restaurant'].enabled).toBe(true);
+            expect(byUserOnly.results['per-restaurant'].enabled).toBe(false);
+        });
+    });
 });

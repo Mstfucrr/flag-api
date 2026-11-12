@@ -65,7 +65,7 @@ export class FlagsRuntimeService {
             }
             const slice = snapshot.byKey[key];
             results[key] = {
-                enabled: slice !== undefined ? evaluateRuntimeEnabled(slice.enabled, slice.rules, context) : false,
+                enabled: slice !== undefined ? evaluateRuntimeEnabled(key, slice.enabled, slice.rules, context) : false,
             };
         }
 
@@ -107,7 +107,7 @@ export class FlagsRuntimeService {
                 groupResults[key] = {
                     enabled:
                         slice !== undefined
-                            ? evaluateRuntimeEnabled(slice.enabled, slice.rules, groupContext)
+                            ? evaluateRuntimeEnabled(key, slice.enabled, slice.rules, groupContext)
                             : false,
                 };
             }

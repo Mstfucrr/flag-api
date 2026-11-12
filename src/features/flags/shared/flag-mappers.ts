@@ -42,14 +42,21 @@ export function deepCloneSnapshot(s: FlagSnapshotModel): FlagSnapshotModel {
     return structuredClone(s);
 }
 
-/** Core kural motoru. Kapalı master veya eşleşmeyen kuralda `false`. */
+/**
+ * Core kural motoru. Kapalı master veya eşleşmeyen kuralda `false`.
+ *
+ * @param flagKey - Kayıtlı flag anahtarı; `percentage` operatörünün hash tuzudur, bu yüzden her
+ * çağrıda (tek ve toplu evaluate) geçirilmelidir. Yayındaki bir flag'in anahtarı değişmemelidir.
+ */
 export function evaluateRuntimeEnabled(
+    flagKey: string,
     masterEnabled: boolean,
     rules: FlagConditionRow[],
     context: Record<string, unknown>,
 ): boolean {
     return evaluateFlag(
         {
+            key: flagKey,
             enabled: masterEnabled,
             rules,
         },

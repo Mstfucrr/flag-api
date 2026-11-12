@@ -1,7 +1,9 @@
 allowBuilds:
-  '@instana/autoprofile': true
-  '@nestjs/core': true
-  '@scarf/scarf': false
-  event-loop-stats: true
-  gcstats.js: true
-  unrs-resolver: true
+    '@instana/autoprofile': true
+    '@nestjs/core': true
+    '@scarf/scarf': false
+    event-loop-stats: true
+    gcstats.js: true
+    unrs-resolver: true
+minimumReleaseAgeExclude:
+    - '@core-sdk/feature-flags-core@0.7.0'
